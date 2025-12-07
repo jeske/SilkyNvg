@@ -198,7 +198,6 @@ void main() {
         private byte[] GetFragmentShaderBytes()
         {
             // GLSL fragment shader (SPIRV-Cross compatible)
-            // DEBUG: Always output bright magenta to validate pipeline works
             string fragmentShaderCode = @"
 #version 450
 
@@ -208,8 +207,8 @@ layout(location = 1) in vec4 frag_Color;
 layout(location = 0) out vec4 out_Color;
 
 void main() {
-    // DEBUG: Force bright magenta output to validate shader executes
-    out_Color = vec4(1.0, 0.0, 1.0, 1.0);
+    // Use vertex color for solid fill rendering
+    out_Color = frag_Color;
 }
 ";
             return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);

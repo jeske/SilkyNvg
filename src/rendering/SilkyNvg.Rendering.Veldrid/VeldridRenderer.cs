@@ -33,6 +33,10 @@ namespace SilkyNvg.Rendering.Veldrid
         private SizeF _viewportSize;
         private bool _isInitialized;
 
+        // Active command list for rendering - MUST be set before BeginFrame/EndFrame!
+        // Veldrid requires explicit CommandList management (unlike OpenGL's immediate mode).
+        private CommandList? _activeRenderCommandList;
+
         // Vertex format: position (x,y) + texcoord (u,v) + color (rgba)
         [StructLayout(LayoutKind.Sequential)]
         private struct NvgVertex
@@ -238,6 +242,17 @@ void main() {
             _viewportSize = size;
         }
 
+        /// <summary>
+        /// Sets the active CommandList for rendering. MUST be called before BeginFrame/EndFrame!
+        /// This is Veldrid-specific - unlike OpenGL's immediate mode, Veldrid requires
+        /// explicit CommandList management to ensure proper draw ordering.
+        /// </summary>
+        /// <param name="commandList">The CommandList from the engine's render loop</param>
+        public void SetActiveCommandList(CommandList commandList)
+        {
+            _activeRenderCommandList = commandList;
+        }
+
         public void Cancel()
         {
             _vertexBatch.Clear();
@@ -248,6 +263,15 @@ void main() {
         {
             Console.WriteLine($"[VeldridRenderer] Flush called - vertices: {_vertexBatch.Count}, drawCalls: {_drawCalls.Count}, initialized: {_isInitialized}");
             Console.WriteLine($"[VeldridRenderer] Viewport: {_viewportSize.Width}x{_viewportSize.Height}");
+
+            // FAIL-FAST: CommandList must be set before Flush
+            if (_activeRenderCommandList == null)
+            {
+                throw new InvalidOperationException(
+                    "VeldridRenderer.Flush() called without an active CommandList! " +
+                    "You must call SetActiveCommandList(commandList) before BeginFrame/EndFrame. " +
+                    "This is required to properly order SilkyNVG rendering with your rendering pipeline.");
+            }
 
             if (!_isInitialized)
             {
@@ -272,13 +296,12 @@ void main() {
                 _drawCalls.Add(new DrawCall { VertexOffset = 0, VertexCount = 3, BlendState = BlendStateDescription.SingleAlphaBlend });
             }
 
-            var commandList = _graphicsDevice.ResourceFactory.CreateCommandList();
-            commandList.Begin();
-            commandList.SetFramebuffer(_graphicsDevice.SwapchainFramebuffer);
+            // Use the engine's active CommandList - framebuffer already set by engine
+            var commandList = _activeRenderCommandList;
 
             // Update view size uniform (use Vector4 for proper 16-byte alignment)
             var viewSizeData = new Vector4(_viewportSize.Width, _viewportSize.Height, 0, 0);
-            commandList.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
+            _graphicsDevice.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
 
             // Resize vertex buffer if needed
             uint requiredSize = (uint)(_vertexBatch.Count * Marshal.SizeOf<NvgVertex>());
@@ -293,7 +316,7 @@ void main() {
             // Upload vertices
             var vertexArray = _vertexBatch.ToArray();
             Console.WriteLine($"[VeldridRenderer] Uploading {vertexArray.Length} vertices, first vertex: ({vertexArray[0].X}, {vertexArray[0].Y}) color: ({vertexArray[0].R}, {vertexArray[0].G}, {vertexArray[0].B}, {vertexArray[0].A})");
-            commandList.UpdateBuffer(_vertexBuffer, 0, vertexArray);
+            _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, vertexArray);
 
             // Set pipeline state
             commandList.SetPipeline(_solidFillPipeline);
@@ -307,10 +330,7 @@ void main() {
                 commandList.Draw((uint)drawCall.VertexCount, 1, (uint)drawCall.VertexOffset, 0);
             }
 
-            commandList.End();
-            _graphicsDevice.SubmitCommands(commandList);
-            commandList.Dispose();
-
+            // Do NOT End/Submit/Dispose - the engine's game loop handles that
             Console.WriteLine("[VeldridRenderer] Flush complete");
             Cancel();
         }
@@ -427,8 +447,9 @@ void main() {
         /// <summary>
         /// DEBUG: Draw a hardcoded test triangle bypassing NVG completely.
         /// This validates the Veldrid pipeline is working.
+        /// Uses the passed-in CommandList from the engine to maintain proper draw order.
         /// </summary>
-        public void DrawTestTriangle()
+        public void DrawTestTriangle(CommandList commandList)
         {
             if (!_isInitialized)
             {
@@ -459,28 +480,18 @@ void main() {
             Console.WriteLine($"  BotLeft: ({vertices[1].X}, {vertices[1].Y})");
             Console.WriteLine($"  BotRight: ({vertices[2].X}, {vertices[2].Y})");
 
-            var commandList = _graphicsDevice.ResourceFactory.CreateCommandList();
-            commandList.Begin();
-            commandList.SetFramebuffer(_graphicsDevice.SwapchainFramebuffer);
-
-            // Update view size uniform
+            // Update buffers using graphicsDevice BEFORE commandList operations
             var viewSizeData = new Vector4(w, h, 0, 0);
-            commandList.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
+            _graphicsDevice.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
+            _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, vertices);
 
-            // Upload vertices
-            commandList.UpdateBuffer(_vertexBuffer, 0, vertices);
-
-            // Set pipeline
+            // Use the passed-in commandList - framebuffer already set by engine
             commandList.SetPipeline(_solidFillPipeline);
             commandList.SetVertexBuffer(0, _vertexBuffer);
             commandList.SetGraphicsResourceSet(0, _resourceSet);
 
             // Draw the triangle
             commandList.Draw(3, 1, 0, 0);
-
-            commandList.End();
-            _graphicsDevice.SubmitCommands(commandList);
-            commandList.Dispose();
 
             Console.WriteLine("[VeldridRenderer] DrawTestTriangle: Complete");
         }

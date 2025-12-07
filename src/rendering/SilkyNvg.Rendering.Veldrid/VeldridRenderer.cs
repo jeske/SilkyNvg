@@ -38,28 +38,19 @@ namespace SilkyNvg.Rendering.Veldrid
         private CommandList? _activeRenderCommandList;
 
         // Vertex format: position (x,y) + texcoord (u,v) + color (rgba)
+        // IMPORTANT: Must use Vector2 and RgbaFloat types to match Veldrid's expected layout!
         [StructLayout(LayoutKind.Sequential)]
         private struct NvgVertex
         {
-            public float X;
-            public float Y;
-            public float U;
-            public float V;
-            public float R;
-            public float G;
-            public float B;
-            public float A;
+            public Vector2 Position;    // 8 bytes
+            public Vector2 TexCoord;    // 8 bytes
+            public RgbaFloat Color;     // 16 bytes
 
             public NvgVertex(Vertex vertex, Colour color)
             {
-                X = vertex.X;
-                Y = vertex.Y;
-                U = vertex.U;
-                V = vertex.V;
-                R = color.R;
-                G = color.G;
-                B = color.B;
-                A = color.A;
+                Position = new Vector2(vertex.X, vertex.Y);
+                TexCoord = new Vector2(vertex.U, vertex.V);
+                Color = new RgbaFloat(color.R, color.G, color.B, color.A);
             }
         }
 
@@ -119,11 +110,11 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             var factory = _graphicsDevice.ResourceFactory;
 
-            // Vertex layout: position, texcoord, color
+            // Vertex layout: Position at location 0, skip 8 bytes (TexCoord), Color at location 1
+            // The struct HAS TexCoord for future texture support, but shader doesn't use it yet
             var vertexLayout = new VertexLayoutDescription(
                 new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4));
+                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16)); // Offset 16 bytes (skip Position + TexCoord)
 
             // Resource layout for view size uniform
             _resourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
@@ -175,19 +166,16 @@ namespace SilkyNvg.Rendering.Veldrid
             string vertexShaderCode = @"
 #version 450
 
-layout(location = 0) in vec2 Position;
-layout(location = 1) in vec2 TexCoord;
-layout(location = 2) in vec4 Color;
-
-layout(location = 0) out vec2 frag_TexCoord;
-layout(location = 1) out vec4 frag_Color;
-
 layout(set = 0, binding = 0) uniform ViewSize {
     vec2 viewSize;
 };
 
+layout(location = 0) in vec2 Position;
+layout(location = 1) in vec4 Color;
+
+layout(location = 0) out vec4 frag_Color;
+
 void main() {
-    frag_TexCoord = TexCoord;
     frag_Color = Color;
     gl_Position = vec4(2.0 * Position.x / viewSize.x - 1.0, 1.0 - 2.0 * Position.y / viewSize.y, 0.0, 1.0);
 }
@@ -201,13 +189,11 @@ void main() {
             string fragmentShaderCode = @"
 #version 450
 
-layout(location = 0) in vec2 frag_TexCoord;
-layout(location = 1) in vec4 frag_Color;
+layout(location = 0) in vec4 frag_Color;
 
 layout(location = 0) out vec4 out_Color;
 
 void main() {
-    // Use vertex color for solid fill rendering
     out_Color = frag_Color;
 }
 ";
@@ -288,9 +274,9 @@ void main() {
                 float cy = _viewportSize.Height / 2;
                 float size = 100;
 
-                _vertexBatch.Add(new NvgVertex { X = cx, Y = cy - size, U = 0, V = 0, R = 1, G = 0, B = 0, A = 1 });
-                _vertexBatch.Add(new NvgVertex { X = cx - size, Y = cy + size, U = 0, V = 0, R = 1, G = 0, B = 0, A = 1 });
-                _vertexBatch.Add(new NvgVertex { X = cx + size, Y = cy + size, U = 0, V = 0, R = 1, G = 0, B = 0, A = 1 });
+                _vertexBatch.Add(new NvgVertex { Position = new Vector2(cx, cy - size), TexCoord = Vector2.Zero, Color = new RgbaFloat(1, 0, 0, 1) });
+                _vertexBatch.Add(new NvgVertex { Position = new Vector2(cx - size, cy + size), TexCoord = Vector2.Zero, Color = new RgbaFloat(1, 0, 0, 1) });
+                _vertexBatch.Add(new NvgVertex { Position = new Vector2(cx + size, cy + size), TexCoord = Vector2.Zero, Color = new RgbaFloat(1, 0, 0, 1) });
 
                 _drawCalls.Add(new DrawCall { VertexOffset = 0, VertexCount = 3, BlendState = BlendStateDescription.SingleAlphaBlend });
             }
@@ -314,7 +300,12 @@ void main() {
 
             // Upload vertices
             var vertexArray = _vertexBatch.ToArray();
-            Console.WriteLine($"[VeldridRenderer] Uploading {vertexArray.Length} vertices, first vertex: ({vertexArray[0].X}, {vertexArray[0].Y}) color: ({vertexArray[0].R}, {vertexArray[0].G}, {vertexArray[0].B}, {vertexArray[0].A})");
+            Console.WriteLine($"[VeldridRenderer] Uploading {vertexArray.Length} vertices");
+            Console.WriteLine($"  Vertex 0: pos={vertexArray[0].Position} uv={vertexArray[0].TexCoord} color={vertexArray[0].Color}");
+            if (vertexArray.Length > 6)
+            {
+                Console.WriteLine($"  Vertex 6: pos={vertexArray[6].Position} uv={vertexArray[6].TexCoord} color={vertexArray[6].Color}");
+            }
             _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, vertexArray);
 
             // Set pipeline state
@@ -469,15 +460,15 @@ void main() {
             // Triangle in the center of the screen
             var vertices = new NvgVertex[]
             {
-                new NvgVertex { X = w * 0.5f, Y = h * 0.2f, U = 0, V = 0, R = 1, G = 0, B = 0, A = 1 }, // Top (red)
-                new NvgVertex { X = w * 0.2f, Y = h * 0.8f, U = 0, V = 0, R = 0, G = 1, B = 0, A = 1 }, // Bottom-left (green)
-                new NvgVertex { X = w * 0.8f, Y = h * 0.8f, U = 0, V = 0, R = 0, G = 0, B = 1, A = 1 }, // Bottom-right (blue)
+                new NvgVertex { Position = new Vector2(w * 0.5f, h * 0.2f), TexCoord = Vector2.Zero, Color = new RgbaFloat(1, 0, 0, 1) }, // Top (red)
+                new NvgVertex { Position = new Vector2(w * 0.2f, h * 0.8f), TexCoord = Vector2.Zero, Color = new RgbaFloat(0, 1, 0, 1) }, // Bottom-left (green)
+                new NvgVertex { Position = new Vector2(w * 0.8f, h * 0.8f), TexCoord = Vector2.Zero, Color = new RgbaFloat(0, 0, 1, 1) }, // Bottom-right (blue)
             };
 
             Console.WriteLine($"[VeldridRenderer] DrawTestTriangle: Triangle vertices:");
-            Console.WriteLine($"  Top: ({vertices[0].X}, {vertices[0].Y})");
-            Console.WriteLine($"  BotLeft: ({vertices[1].X}, {vertices[1].Y})");
-            Console.WriteLine($"  BotRight: ({vertices[2].X}, {vertices[2].Y})");
+            Console.WriteLine($"  Top: ({vertices[0].Position.X}, {vertices[0].Position.Y}) color: {vertices[0].Color}");
+            Console.WriteLine($"  BotLeft: ({vertices[1].Position.X}, {vertices[1].Position.Y}) color: {vertices[1].Color}");
+            Console.WriteLine($"  BotRight: ({vertices[2].Position.X}, {vertices[2].Position.Y}) color: {vertices[2].Color}");
 
             // Update buffers using graphicsDevice BEFORE commandList operations
             var viewSizeData = new Vector4(w, h, 0, 0);

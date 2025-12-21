@@ -19,13 +19,23 @@ namespace SilkyNvg.Rendering.Veldrid
         private readonly GraphicsDevice _graphicsDevice;
         private readonly bool _edgeAntiAlias;
 
-        // Pipeline resources
+        // Pipeline resources - solid fill (shapes)
         private Pipeline? _solidFillPipeline;
         private DeviceBuffer? _vertexBuffer;
         private DeviceBuffer? _viewSizeUniformBuffer;
-        private ResourceLayout? _resourceLayout;
-        private ResourceSet? _resourceSet;
-        private Shader[]? _shaders;
+        private ResourceLayout? _solidFillResourceLayout;
+        private ResourceSet? _solidFillResourceSet;
+        private Shader[]? _solidFillShaders;
+
+        // Pipeline resources - textured (font atlas text rendering)
+        private Pipeline? _texturedPipeline;
+        private ResourceLayout? _texturedResourceLayout;
+        private Shader[]? _texturedShaders;
+        private Sampler? _fontAtlasSampler;
+
+        // Texture management for font atlas and images
+        private readonly Dictionary<int, ManagedTexture> _textureRegistry = new();
+        private int _nextTextureId = 1;
 
         // Batching
         private readonly List<NvgVertex> _vertexBatch = new(4096);
@@ -61,6 +71,18 @@ namespace SilkyNvg.Rendering.Veldrid
             public BlendStateDescription BlendState;
         }
 
+        /// <summary>
+        /// Tracks a Veldrid texture created by NVG (font atlas or image)
+        /// </summary>
+        private struct ManagedTexture
+        {
+            public global::Veldrid.Texture GpuTexture;
+            public TextureView TextureView;
+            public Size TextureSize;
+            public ImageFlags CreationFlags;
+            public bool IsAlphaOnly; // Font atlas uses R8_UNorm (alpha only)
+        }
+
         public bool EdgeAntiAlias => _edgeAntiAlias;
 
         public VeldridRenderer(GraphicsDevice graphicsDevice, bool edgeAntiAlias = true)
@@ -93,35 +115,48 @@ namespace SilkyNvg.Rendering.Veldrid
 
         private void CreateShaders()
         {
-            var vertexShaderDesc = new ShaderDescription(
+            // Solid fill shaders (shapes without textures)
+            var solidVertexShaderDesc = new ShaderDescription(
                 ShaderStages.Vertex,
-                GetVertexShaderBytes(),
+                GetSolidFillVertexShaderBytes(),
                 "main");
 
-            var fragmentShaderDesc = new ShaderDescription(
+            var solidFragmentShaderDesc = new ShaderDescription(
                 ShaderStages.Fragment,
-                GetFragmentShaderBytes(),
+                GetSolidFillFragmentShaderBytes(),
                 "main");
 
-            _shaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(vertexShaderDesc, fragmentShaderDesc);
+            _solidFillShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(solidVertexShaderDesc, solidFragmentShaderDesc);
+
+            // Textured shaders (font atlas text rendering)
+            var texturedVertexShaderDesc = new ShaderDescription(
+                ShaderStages.Vertex,
+                GetTexturedVertexShaderBytes(),
+                "main");
+
+            var texturedFragmentShaderDesc = new ShaderDescription(
+                ShaderStages.Fragment,
+                GetTexturedFragmentShaderBytes(),
+                "main");
+
+            _texturedShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(texturedVertexShaderDesc, texturedFragmentShaderDesc);
         }
 
         private void CreatePipeline()
         {
             var factory = _graphicsDevice.ResourceFactory;
 
+            // === SOLID FILL PIPELINE (shapes without textures) ===
             // Vertex layout: Position at location 0, skip 8 bytes (TexCoord), Color at location 1
-            // The struct HAS TexCoord for future texture support, but shader doesn't use it yet
-            var vertexLayout = new VertexLayoutDescription(
+            var solidFillVertexLayout = new VertexLayoutDescription(
                 new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
                 new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16)); // Offset 16 bytes (skip Position + TexCoord)
 
-            // Resource layout for view size uniform
-            _resourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+            // Resource layout for view size uniform only
+            _solidFillResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
                 new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
-            var pipelineDesc = new GraphicsPipelineDescription
-            {
+            var solidFillPipelineDesc = new GraphicsPipelineDescription {
                 BlendState = BlendStateDescription.SingleAlphaBlend,
                 DepthStencilState = DepthStencilStateDescription.Disabled,
                 RasterizerState = new RasterizerStateDescription(
@@ -131,14 +166,56 @@ namespace SilkyNvg.Rendering.Veldrid
                     depthClipEnabled: false,
                     scissorTestEnabled: false),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _resourceLayout },
+                ResourceLayouts = new[] { _solidFillResourceLayout },
                 ShaderSet = new ShaderSetDescription(
-                    new[] { vertexLayout },
-                    _shaders),
+                    new[] { solidFillVertexLayout },
+                    _solidFillShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
 
-            _solidFillPipeline = factory.CreateGraphicsPipeline(pipelineDesc);
+            _solidFillPipeline = factory.CreateGraphicsPipeline(solidFillPipelineDesc);
+
+            // === TEXTURED PIPELINE (font atlas text rendering) ===
+            // Vertex layout: Position, TexCoord, Color - all with explicit offsets
+            var texturedVertexLayout = new VertexLayoutDescription(
+                new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
+                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
+                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
+
+            // Resource layout: ViewSize uniform + font atlas texture + sampler
+            _texturedResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+                new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex),
+                new ResourceLayoutElementDescription("FontAtlas", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+                new ResourceLayoutElementDescription("FontAtlasSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+
+            // Create sampler for font atlas (linear filtering for smooth text)
+            _fontAtlasSampler = factory.CreateSampler(new SamplerDescription {
+                AddressModeU = SamplerAddressMode.Clamp,
+                AddressModeV = SamplerAddressMode.Clamp,
+                AddressModeW = SamplerAddressMode.Clamp,
+                Filter = SamplerFilter.MinLinear_MagLinear_MipLinear,
+                MinimumLod = 0,
+                MaximumLod = 0
+            });
+
+            var texturedPipelineDesc = new GraphicsPipelineDescription {
+                BlendState = BlendStateDescription.SingleAlphaBlend,
+                DepthStencilState = DepthStencilStateDescription.Disabled,
+                RasterizerState = new RasterizerStateDescription(
+                    cullMode: FaceCullMode.None,
+                    fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise,
+                    depthClipEnabled: false,
+                    scissorTestEnabled: false),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _texturedResourceLayout },
+                ShaderSet = new ShaderSetDescription(
+                    new[] { texturedVertexLayout },
+                    _texturedShaders),
+                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+            };
+
+            _texturedPipeline = factory.CreateGraphicsPipeline(texturedPipelineDesc);
         }
 
         private void CreateBuffers()
@@ -155,14 +232,15 @@ namespace SilkyNvg.Rendering.Veldrid
                 16, // vec2 padded to 16 bytes
                 BufferUsage.UniformBuffer | BufferUsage.Dynamic));
 
-            _resourceSet = factory.CreateResourceSet(new ResourceSetDescription(
-                _resourceLayout,
+            // Resource set for solid fill pipeline (just view size uniform)
+            _solidFillResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
+                _solidFillResourceLayout,
                 _viewSizeUniformBuffer));
         }
 
-        private byte[] GetVertexShaderBytes()
+        private byte[] GetSolidFillVertexShaderBytes()
         {
-            // GLSL vertex shader (SPIRV-Cross compatible)
+            // GLSL vertex shader for solid fill (no texture)
             string vertexShaderCode = @"
 #version 450
 
@@ -183,9 +261,9 @@ void main() {
             return System.Text.Encoding.UTF8.GetBytes(vertexShaderCode);
         }
 
-        private byte[] GetFragmentShaderBytes()
+        private byte[] GetSolidFillFragmentShaderBytes()
         {
-            // GLSL fragment shader (SPIRV-Cross compatible)
+            // GLSL fragment shader for solid fill (no texture)
             string fragmentShaderCode = @"
 #version 450
 
@@ -200,25 +278,144 @@ void main() {
             return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);
         }
 
+        private byte[] GetTexturedVertexShaderBytes()
+        {
+            // GLSL vertex shader for textured rendering (font atlas)
+            string vertexShaderCode = @"
+#version 450
+
+layout(set = 0, binding = 0) uniform ViewSize {
+    vec2 viewSize;
+};
+
+layout(location = 0) in vec2 Position;
+layout(location = 1) in vec2 TexCoord;
+layout(location = 2) in vec4 Color;
+
+layout(location = 0) out vec2 frag_TexCoord;
+layout(location = 1) out vec4 frag_Color;
+
+void main() {
+    frag_TexCoord = TexCoord;
+    frag_Color = Color;
+    gl_Position = vec4(2.0 * Position.x / viewSize.x - 1.0, 1.0 - 2.0 * Position.y / viewSize.y, 0.0, 1.0);
+}
+";
+            return System.Text.Encoding.UTF8.GetBytes(vertexShaderCode);
+        }
+
+        private byte[] GetTexturedFragmentShaderBytes()
+        {
+            // GLSL fragment shader for textured rendering (font atlas)
+            // Font atlas is R8_UNorm (alpha only), sample red channel as alpha
+            string fragmentShaderCode = @"
+#version 450
+
+layout(set = 0, binding = 1) uniform texture2D FontAtlas;
+layout(set = 0, binding = 2) uniform sampler FontAtlasSampler;
+
+layout(location = 0) in vec2 frag_TexCoord;
+layout(location = 1) in vec4 frag_Color;
+
+layout(location = 0) out vec4 out_Color;
+
+void main() {
+    float alpha = texture(sampler2D(FontAtlas, FontAtlasSampler), frag_TexCoord).r;
+    out_Color = vec4(frag_Color.rgb, frag_Color.a * alpha);
+}
+";
+            return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);
+        }
+
         public int CreateTexture(Texture type, Size size, ImageFlags imageFlags, ReadOnlySpan<byte> data)
         {
-            // Minimal implementation - return dummy texture ID
-            return 1;
+            var factory = _graphicsDevice.ResourceFactory;
+
+            // Font atlas is alpha-only (R8_UNorm), RGBA images use R8G8B8A8_UNorm
+            bool isAlphaOnly = (type == Texture.Alpha);
+            var pixelFormat = isAlphaOnly ? PixelFormat.R8_UNorm : PixelFormat.R8_G8_B8_A8_UNorm;
+
+            // Create the texture
+            var textureDescription = TextureDescription.Texture2D(
+                (uint)size.Width,
+                (uint)size.Height,
+                mipLevels: 1,
+                arrayLayers: 1,
+                pixelFormat,
+                TextureUsage.Sampled);
+
+            var gpuTexture = factory.CreateTexture(textureDescription);
+            var textureView = factory.CreateTextureView(gpuTexture);
+
+            // Upload initial data if provided
+            if (!data.IsEmpty) {
+                uint bytesPerPixel = isAlphaOnly ? 1u : 4u;
+                _graphicsDevice.UpdateTexture(
+                    gpuTexture,
+                    data.ToArray(),
+                    0, 0, 0,
+                    (uint)size.Width, (uint)size.Height, 1,
+                    0, 0);
+            }
+
+            int textureId = _nextTextureId++;
+            _textureRegistry[textureId] = new ManagedTexture {
+                GpuTexture = gpuTexture,
+                TextureView = textureView,
+                TextureSize = size,
+                CreationFlags = imageFlags,
+                IsAlphaOnly = isAlphaOnly
+            };
+
+            Console.WriteLine($"[VeldridRenderer] CreateTexture: id={textureId}, size={size.Width}x{size.Height}, alpha={isAlphaOnly}");
+            return textureId;
         }
 
-        public bool DeleteTexture(int image)
+        public bool DeleteTexture(int textureId)
         {
+            if (!_textureRegistry.TryGetValue(textureId, out var managedTexture)) {
+                return false;
+            }
+
+            managedTexture.TextureView.Dispose();
+            managedTexture.GpuTexture.Dispose();
+            _textureRegistry.Remove(textureId);
+
+            Console.WriteLine($"[VeldridRenderer] DeleteTexture: id={textureId}");
             return true;
         }
 
-        public bool UpdateTexture(int image, System.Drawing.Rectangle bounds, ReadOnlySpan<byte> data)
+        public bool UpdateTexture(int textureId, System.Drawing.Rectangle bounds, ReadOnlySpan<byte> data)
         {
+            if (!_textureRegistry.TryGetValue(textureId, out var managedTexture)) {
+                Console.WriteLine($"[VeldridRenderer] UpdateTexture: texture {textureId} not found!");
+                return false;
+            }
+
+            if (data.IsEmpty) {
+                return true; // Nothing to upload
+            }
+
+            // Upload the region to the texture
+            _graphicsDevice.UpdateTexture(
+                managedTexture.GpuTexture,
+                data.ToArray(),
+                (uint)bounds.X, (uint)bounds.Y, 0,
+                (uint)bounds.Width, (uint)bounds.Height, 1,
+                0, 0);
+
+            Console.WriteLine($"[VeldridRenderer] UpdateTexture: id={textureId}, region=({bounds.X},{bounds.Y},{bounds.Width},{bounds.Height})");
             return true;
         }
 
-        public bool GetTextureSize(int image, out Size size)
+        public bool GetTextureSize(int textureId, out Size size)
         {
-            size = new Size(1, 1);
+            if (!_textureRegistry.TryGetValue(textureId, out var managedTexture)) {
+                size = new Size(1, 1);
+                return false;
+            }
+
+            size = managedTexture.TextureSize;
             return true;
         }
 
@@ -488,16 +685,21 @@ void main() {
 
         public void Dispose()
         {
+            // Dispose all managed textures
+            foreach (var kvp in _textureRegistry) {
+                kvp.Value.TextureView.Dispose();
+                kvp.Value.GpuTexture.Dispose();
+            }
+            _textureRegistry.Clear();
+
             _solidFillPipeline?.Dispose();
             _vertexBuffer?.Dispose();
             _viewSizeUniformBuffer?.Dispose();
             _resourceSet?.Dispose();
             _resourceLayout?.Dispose();
 
-            if (_shaders != null)
-            {
-                foreach (var shader in _shaders)
-                {
+            if (_shaders != null) {
+                foreach (var shader in _shaders) {
                     shader.Dispose();
                 }
             }

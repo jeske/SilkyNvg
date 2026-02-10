@@ -508,7 +508,7 @@ void main() {
             // Set pipeline state
             commandList.SetPipeline(_solidFillPipeline);
             commandList.SetVertexBuffer(0, _vertexBuffer);
-            commandList.SetGraphicsResourceSet(0, _resourceSet);
+            commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
 
             // Execute draw calls
             foreach (var drawCall in _drawCalls)
@@ -675,7 +675,7 @@ void main() {
             // Use the passed-in commandList - framebuffer already set by engine
             commandList.SetPipeline(_solidFillPipeline);
             commandList.SetVertexBuffer(0, _vertexBuffer);
-            commandList.SetGraphicsResourceSet(0, _resourceSet);
+            commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
 
             // Draw the triangle
             commandList.Draw(3, 1, 0, 0);
@@ -692,17 +692,29 @@ void main() {
             }
             _textureRegistry.Clear();
 
+            // Dispose solid fill pipeline resources
             _solidFillPipeline?.Dispose();
-            _vertexBuffer?.Dispose();
-            _viewSizeUniformBuffer?.Dispose();
-            _resourceSet?.Dispose();
-            _resourceLayout?.Dispose();
-
-            if (_shaders != null) {
-                foreach (var shader in _shaders) {
+            _solidFillResourceSet?.Dispose();
+            _solidFillResourceLayout?.Dispose();
+            if (_solidFillShaders != null) {
+                foreach (var shader in _solidFillShaders) {
                     shader.Dispose();
                 }
             }
+
+            // Dispose textured pipeline resources
+            _texturedPipeline?.Dispose();
+            _texturedResourceLayout?.Dispose();
+            _fontAtlasSampler?.Dispose();
+            if (_texturedShaders != null) {
+                foreach (var shader in _texturedShaders) {
+                    shader.Dispose();
+                }
+            }
+
+            // Dispose shared resources
+            _vertexBuffer?.Dispose();
+            _viewSizeUniformBuffer?.Dispose();
         }
     }
 }

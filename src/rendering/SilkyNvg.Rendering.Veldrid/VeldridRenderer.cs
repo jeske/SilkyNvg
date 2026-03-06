@@ -37,6 +37,9 @@ namespace SilkyNvg.Rendering.Veldrid
         private readonly Dictionary<int, ManagedTexture> _textureRegistry = new();
         private int _nextTextureId = 1;
 
+        // Cached ResourceSets for textured draw calls (keyed by texture ID)
+        private readonly Dictionary<int, ResourceSet> _texturedResourceSetCache = new();
+
         // Batching
         private readonly List<NvgVertex> _vertexBatch = new(4096);
         private readonly List<DrawCall> _drawCalls = new(64);
@@ -68,6 +71,7 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             public int VertexOffset;
             public int VertexCount;
+            public int TextureId; // 0 = solid fill, non-zero = textured (font atlas or image)
             public BlendStateDescription BlendState;
         }
 
@@ -377,6 +381,12 @@ void main() {
                 return false;
             }
 
+            // Invalidate cached ResourceSet for this texture
+            if (_texturedResourceSetCache.TryGetValue(textureId, out var cachedResourceSet)) {
+                cachedResourceSet.Dispose();
+                _texturedResourceSetCache.Remove(textureId);
+            }
+
             managedTexture.TextureView.Dispose();
             managedTexture.GpuTexture.Dispose();
             _textureRegistry.Remove(textureId);
@@ -396,15 +406,38 @@ void main() {
                 return true; // Nothing to upload
             }
 
-            // Upload the region to the texture
+            uint bytesPerPixel = managedTexture.IsAlphaOnly ? 1u : 4u;
+            int atlasWidth = managedTexture.TextureSize.Width;
+            int regionWidth = bounds.Width;
+            int regionHeight = bounds.Height;
+            uint regionRowBytes = (uint)(regionWidth * bytesPerPixel);
+            uint atlasRowBytes = (uint)(atlasWidth * bytesPerPixel);
+            uint expectedRegionSize = regionRowBytes * (uint)regionHeight;
+
+            // FontStash passes the ENTIRE atlas data but with dirty region bounds.
+            // We must extract just the dirty sub-rectangle for Veldrid's tightly-packed upload.
+            byte[] regionPixelData;
+            if ((uint)data.Length == expectedRegionSize) {
+                // Data is already the right size for the region
+                regionPixelData = data.ToArray();
+            } else {
+                // Extract sub-rectangle from full atlas data
+                regionPixelData = new byte[expectedRegionSize];
+                for (int row = 0; row < regionHeight; row++) {
+                    int sourceOffset = (int)(((bounds.Y + row) * atlasRowBytes) + (bounds.X * bytesPerPixel));
+                    int destOffset = (int)(row * regionRowBytes);
+                    data.Slice(sourceOffset, (int)regionRowBytes).CopyTo(regionPixelData.AsSpan(destOffset));
+                }
+            }
+
             _graphicsDevice.UpdateTexture(
                 managedTexture.GpuTexture,
-                data.ToArray(),
+                regionPixelData,
                 (uint)bounds.X, (uint)bounds.Y, 0,
-                (uint)bounds.Width, (uint)bounds.Height, 1,
+                (uint)regionWidth, (uint)regionHeight, 1,
                 0, 0);
 
-            Console.WriteLine($"[VeldridRenderer] UpdateTexture: id={textureId}, region=({bounds.X},{bounds.Y},{bounds.Width},{bounds.Height})");
+            Console.WriteLine($"[VeldridRenderer] UpdateTexture: id={textureId}, region=({bounds.X},{bounds.Y},{bounds.Width},{bounds.Height}), extracted={data.Length != expectedRegionSize}");
             return true;
         }
 
@@ -439,6 +472,33 @@ void main() {
         {
             _vertexBatch.Clear();
             _drawCalls.Clear();
+        }
+
+        /// <summary>
+        /// Gets or creates a ResourceSet for the textured pipeline bound to the given texture.
+        /// Caches ResourceSets so they aren't recreated every frame.
+        /// </summary>
+        private ResourceSet GetOrCreateTexturedResourceSet(int textureId)
+        {
+            if (_texturedResourceSetCache.TryGetValue(textureId, out var existingResourceSet)) {
+                return existingResourceSet;
+            }
+
+            if (!_textureRegistry.TryGetValue(textureId, out var managedTexture)) {
+                throw new InvalidOperationException(
+                    $"VeldridRenderer: Texture ID {textureId} not found in registry. " +
+                    "This means a draw call references a texture that was never created or was already deleted.");
+            }
+
+            var newTexturedResourceSet = _graphicsDevice.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
+                _texturedResourceLayout,
+                _viewSizeUniformBuffer,
+                managedTexture.TextureView,
+                _fontAtlasSampler));
+
+            _texturedResourceSetCache[textureId] = newTexturedResourceSet;
+            Console.WriteLine($"[VeldridRenderer] Created textured ResourceSet for texture {textureId}");
+            return newTexturedResourceSet;
         }
 
         public void Flush()
@@ -505,15 +565,28 @@ void main() {
             }
             _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, vertexArray);
 
-            // Set pipeline state
-            commandList.SetPipeline(_solidFillPipeline);
+            // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);
-            commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
 
-            // Execute draw calls
+            // Execute draw calls, switching pipeline per call based on TextureId
+            int lastBoundTextureId = -1; // Track to avoid redundant pipeline switches
             foreach (var drawCall in _drawCalls)
             {
-                Console.WriteLine($"[VeldridRenderer] Draw: offset={drawCall.VertexOffset}, count={drawCall.VertexCount}");
+                if (drawCall.TextureId != lastBoundTextureId) {
+                    if (drawCall.TextureId == 0) {
+                        // Solid fill: no texture
+                        commandList.SetPipeline(_solidFillPipeline);
+                        commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+                    } else {
+                        // Textured: bind font atlas or image texture
+                        var texturedResourceSet = GetOrCreateTexturedResourceSet(drawCall.TextureId);
+                        commandList.SetPipeline(_texturedPipeline);
+                        commandList.SetGraphicsResourceSet(0, texturedResourceSet);
+                    }
+                    lastBoundTextureId = drawCall.TextureId;
+                }
+
+                Console.WriteLine($"[VeldridRenderer] Draw: offset={drawCall.VertexOffset}, count={drawCall.VertexCount}, texture={drawCall.TextureId}");
                 commandList.Draw((uint)drawCall.VertexCount, 1, (uint)drawCall.VertexOffset, 0);
             }
 
@@ -559,6 +632,7 @@ void main() {
                 {
                     VertexOffset = vertexOffset,
                     VertexCount = vertexCount,
+                    TextureId = paint.Image,
                     BlendState = BlendStateDescription.SingleAlphaBlend
                 });
             }
@@ -602,6 +676,7 @@ void main() {
                 {
                     VertexOffset = vertexOffset,
                     VertexCount = vertexCount,
+                    TextureId = paint.Image,
                     BlendState = BlendStateDescription.SingleAlphaBlend
                 });
             }
@@ -609,8 +684,7 @@ void main() {
 
         public void Triangles(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, ICollection<Vertex> vertices, float fringeWidth)
         {
-            // Minimal implementation for text rendering (not supported in this version)
-            // Just add vertices with color
+            // Text rendering: paint.Image contains the font atlas texture ID
             var color = paint.InnerColour;
             int vertexOffset = _vertexBatch.Count;
 
@@ -626,6 +700,7 @@ void main() {
                 {
                     VertexOffset = vertexOffset,
                     VertexCount = vertexCount,
+                    TextureId = paint.Image,
                     BlendState = BlendStateDescription.SingleAlphaBlend
                 });
             }
@@ -691,6 +766,12 @@ void main() {
                 kvp.Value.GpuTexture.Dispose();
             }
             _textureRegistry.Clear();
+
+            // Dispose cached textured ResourceSets
+            foreach (var kvp in _texturedResourceSetCache) {
+                kvp.Value.Dispose();
+            }
+            _texturedResourceSetCache.Clear();
 
             // Dispose solid fill pipeline resources
             _solidFillPipeline?.Dispose();

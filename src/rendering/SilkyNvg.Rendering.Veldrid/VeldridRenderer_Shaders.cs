@@ -23,6 +23,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
         private byte[] GetSolidFillVertexShaderBytes()
         {
+            // Passes vertex color and tcoord.y (AA coverage) to fragment shader
             string vertexShaderCode = @"
 #version 450
 
@@ -31,12 +32,15 @@ layout(set = 0, binding = 0) uniform ViewSize {
 };
 
 layout(location = 0) in vec2 Position;
-layout(location = 1) in vec4 Color;
+layout(location = 1) in vec2 TexCoord;
+layout(location = 2) in vec4 Color;
 
 layout(location = 0) out vec4 frag_Color;
+layout(location = 1) out vec2 frag_TexCoord;
 
 void main() {
     frag_Color = Color;
+    frag_TexCoord = TexCoord;
     gl_Position = vec4(2.0 * Position.x / viewSize.x - 1.0, 1.0 - 2.0 * Position.y / viewSize.y, 0.0, 1.0);
 }
 ";
@@ -45,15 +49,24 @@ void main() {
 
         private byte[] GetSolidFillFragmentShaderBytes()
         {
+            // Computes AA coverage from fringe vertices:
+            // - Fill AA: tcoord.y fades from 1 (inside) to 0 (edge)
+            // - Stroke AA: tcoord.x encodes cross-stroke position (0/1 = edge, 0.5 = center)
             string fragmentShaderCode = @"
 #version 450
 
 layout(location = 0) in vec4 frag_Color;
+layout(location = 1) in vec2 frag_TexCoord;
 
 layout(location = 0) out vec4 out_Color;
 
 void main() {
-    out_Color = frag_Color;
+    // Stroke edge fade: 0 at edges (x=0 or x=1), 1 at center (x=0.5)
+    // The *3.0 approximates strokeMult for ~2-3px strokes
+    float strokeEdgeFade = min(1.0, (1.0 - abs(frag_TexCoord.x * 2.0 - 1.0)) * 3.0);
+    // Fill edge fade: tcoord.y = 0 at outer fringe, 1 inside
+    float coverage = strokeEdgeFade * frag_TexCoord.y;
+    out_Color = vec4(frag_Color.rgb, frag_Color.a * coverage);
 }
 ";
             return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);
@@ -108,7 +121,7 @@ void main() {
 
         private byte[] GetGradientVertexShaderBytes()
         {
-            // Passes world-space position to fragment shader for gradient math
+            // Passes world-space position and AA coverage to fragment shader
             string vertexShaderCode = @"
 #version 450
 
@@ -121,9 +134,11 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 2) in vec4 Color;
 
 layout(location = 0) out vec2 frag_WorldPosition;
+layout(location = 1) out float frag_AACoverage;
 
 void main() {
     frag_WorldPosition = Position;
+    frag_AACoverage = TexCoord.y;
     gl_Position = vec4(2.0 * Position.x / viewSize.x - 1.0, 1.0 - 2.0 * Position.y / viewSize.y, 0.0, 1.0);
 }
 ";
@@ -146,6 +161,7 @@ layout(set = 0, binding = 1) uniform GradientParams {
 };
 
 layout(location = 0) in vec2 frag_WorldPosition;
+layout(location = 1) in float frag_AACoverage;
 
 layout(location = 0) out vec4 out_Color;
 
@@ -162,9 +178,9 @@ void main() {
     // Compute signed distance to rounded rectangle
     float d = clamp((sdroundrect(pt, extent, radius) + feather * 0.5) / feather, 0.0, 1.0);
 
-    // Mix between inner and outer colors
+    // Mix between inner and outer colors, apply AA coverage
     vec4 colour = mix(innerCol, outerCol, d);
-    out_Color = colour;
+    out_Color = vec4(colour.rgb, colour.a * frag_AACoverage);
 }
 ";
             return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);

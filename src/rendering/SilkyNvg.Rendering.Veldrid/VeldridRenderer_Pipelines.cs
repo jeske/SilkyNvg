@@ -53,10 +53,11 @@ namespace SilkyNvg.Rendering.Veldrid
             var factory = _graphicsDevice.ResourceFactory;
 
             // === SOLID FILL PIPELINE (shapes without textures) ===
-            // Vertex layout: Position at location 0, skip 8 bytes (TexCoord), Color at location 1
+            // Vertex layout: Position, TexCoord (for AA coverage), Color
             var solidFillVertexLayout = new VertexLayoutDescription(
                 new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16)); // Offset 16 bytes (skip Position + TexCoord)
+                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
+                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
 
             // Resource layout for view size uniform only
             _solidFillResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(

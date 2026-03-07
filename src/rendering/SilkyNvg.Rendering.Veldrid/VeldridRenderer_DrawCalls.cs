@@ -151,14 +151,29 @@ namespace SilkyNvg.Rendering.Veldrid
 
             foreach (var path in paths)
             {
-                // For convex paths, add fill vertices directly as triangle fan
+                // Add fill vertices as triangle fan → triangle list
                 if (path.Fill.Count >= 3) {
-                    // Convert triangle fan to triangle list
                     var firstVertex = path.Fill[0];
                     for (int i = 1; i < path.Fill.Count - 1; i++) {
                         _vertexBatch.Add(new NvgVertex(firstVertex, fillColor));
                         _vertexBatch.Add(new NvgVertex(path.Fill[i], fillColor));
                         _vertexBatch.Add(new NvgVertex(path.Fill[i + 1], fillColor));
+                    }
+                }
+
+                // Add stroke (fringe) vertices for edge anti-aliasing
+                // These have tcoord.y fading to 0 at the outer edge for smooth AA
+                if (path.Stroke.Count >= 3) {
+                    for (int i = 0; i < path.Stroke.Count - 2; i++) {
+                        if (i % 2 == 0) {
+                            _vertexBatch.Add(new NvgVertex(path.Stroke[i], fillColor));
+                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 1], fillColor));
+                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 2], fillColor));
+                        } else {
+                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 1], fillColor));
+                            _vertexBatch.Add(new NvgVertex(path.Stroke[i], fillColor));
+                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 2], fillColor));
+                        }
                     }
                 }
             }

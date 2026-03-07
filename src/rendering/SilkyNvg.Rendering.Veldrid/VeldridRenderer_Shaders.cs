@@ -61,13 +61,8 @@ layout(location = 1) in vec2 frag_TexCoord;
 layout(location = 0) out vec4 out_Color;
 
 void main() {
-    // Stroke edge fade: 0 at edges (x=0 or x=1), 1 at center (x=0.5)
-    // The *3.0 approximates strokeMult for ~2-3px strokes
-    // MUST clamp to [0,1] — negative values cause bright color artifacts via blend math
-    float strokeEdgeFade = clamp((1.0 - abs(frag_TexCoord.x * 2.0 - 1.0)) * 3.0, 0.0, 1.0);
-    // Fill edge fade: tcoord.y = 0 at outer fringe, 1 inside
-    float coverage = clamp(strokeEdgeFade * frag_TexCoord.y, 0.0, 1.0);
-    out_Color = vec4(frag_Color.rgb, frag_Color.a * coverage);
+    // DEBUG: disable AA coverage to diagnose missing shapes
+    out_Color = frag_Color;
 }
 ";
             return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);

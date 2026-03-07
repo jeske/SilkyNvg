@@ -6,6 +6,25 @@ namespace SilkyNvg.Rendering.Veldrid
 {
     public sealed partial class VeldridRenderer
     {
+        /// <summary>
+        /// Depth-stencil state that explicitly disables both depth and stencil testing.
+        /// Required when the framebuffer has a depth-stencil attachment but we don't want to use it.
+        /// DepthStencilStateDescription.Disabled leaves stencil fields at zero defaults which
+        /// can cause issues on some drivers when a stencil buffer is present.
+        /// </summary>
+        private static readonly DepthStencilStateDescription DepthStencilDisabledExplicit = new DepthStencilStateDescription
+        {
+            DepthTestEnabled = false,
+            DepthWriteEnabled = false,
+            DepthComparison = ComparisonKind.Always,
+            StencilTestEnabled = false,
+            StencilFront = new StencilBehaviorDescription(StencilOperation.Keep, StencilOperation.Keep, StencilOperation.Keep, ComparisonKind.Always),
+            StencilBack = new StencilBehaviorDescription(StencilOperation.Keep, StencilOperation.Keep, StencilOperation.Keep, ComparisonKind.Always),
+            StencilReadMask = 0xFF,
+            StencilWriteMask = 0x00,
+            StencilReference = 0
+        };
+
         private void CreateShaders()
         {
             // Solid fill shaders (shapes without textures)
@@ -65,7 +84,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             var solidFillPipelineDesc = new GraphicsPipelineDescription {
                 BlendState = BlendStateDescription.SingleAlphaBlend,
-                DepthStencilState = DepthStencilStateDescription.Disabled,
+                DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
                     cullMode: FaceCullMode.None,
                     fillMode: PolygonFillMode.Solid,
@@ -107,7 +126,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             var texturedPipelineDesc = new GraphicsPipelineDescription {
                 BlendState = BlendStateDescription.SingleAlphaBlend,
-                DepthStencilState = DepthStencilStateDescription.Disabled,
+                DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
                     cullMode: FaceCullMode.None,
                     fillMode: PolygonFillMode.Solid,
@@ -138,7 +157,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             var gradientPipelineDesc = new GraphicsPipelineDescription {
                 BlendState = BlendStateDescription.SingleAlphaBlend,
-                DepthStencilState = DepthStencilStateDescription.Disabled,
+                DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
                     cullMode: FaceCullMode.None,
                     fillMode: PolygonFillMode.Solid,

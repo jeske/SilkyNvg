@@ -62,25 +62,44 @@ namespace SilkyNvg.Rendering.Veldrid
             float nvgToFramebufferScaleY = _viewportSize.Height > 0 ? fullFramebufferHeight / _viewportSize.Height : 1.0f;
 
             // Execute draw calls, switching pipeline and scissor per call
+            DrawCallType lastPipelineType = (DrawCallType)255; // Force first switch
             int lastBoundTextureId = -1;
             bool lastScissorWasFullViewport = true;
             foreach (var drawCall in _drawCalls)
             {
-                // Switch pipeline if texture changed
-                if (drawCall.TextureId != lastBoundTextureId)
-                {
-                    if (drawCall.TextureId == 0)
-                    {
-                        commandList.SetPipeline(_solidFillPipeline);
-                        commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
-                    }
-                    else
-                    {
-                        var texturedResourceSet = _textureRegistry.GetOrCreateTexturedResourceSet(drawCall.TextureId);
-                        commandList.SetPipeline(_texturedPipeline);
-                        commandList.SetGraphicsResourceSet(0, texturedResourceSet);
-                    }
-                    lastBoundTextureId = drawCall.TextureId;
+                // Switch pipeline based on draw call type
+                switch (drawCall.Type) {
+                    case DrawCallType.SolidFill:
+                        if (lastPipelineType != DrawCallType.SolidFill) {
+                            commandList.SetPipeline(_solidFillPipeline);
+                            commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+                            lastPipelineType = DrawCallType.SolidFill;
+                            lastBoundTextureId = -1;
+                        }
+                        break;
+
+                    case DrawCallType.Textured:
+                        if (lastPipelineType != DrawCallType.Textured || drawCall.TextureId != lastBoundTextureId) {
+                            var texturedResourceSet = _textureRegistry.GetOrCreateTexturedResourceSet(drawCall.TextureId);
+                            if (lastPipelineType != DrawCallType.Textured) {
+                                commandList.SetPipeline(_texturedPipeline);
+                                lastPipelineType = DrawCallType.Textured;
+                            }
+                            commandList.SetGraphicsResourceSet(0, texturedResourceSet);
+                            lastBoundTextureId = drawCall.TextureId;
+                        }
+                        break;
+
+                    case DrawCallType.Gradient:
+                        // Update gradient uniform buffer with this draw call's parameters
+                        _graphicsDevice.UpdateBuffer(_gradientUniformBuffer, 0, drawCall.GradientParams);
+                        if (lastPipelineType != DrawCallType.Gradient) {
+                            commandList.SetPipeline(_gradientPipeline);
+                            lastPipelineType = DrawCallType.Gradient;
+                        }
+                        commandList.SetGraphicsResourceSet(0, _gradientResourceSet);
+                        lastBoundTextureId = -1;
+                        break;
                 }
 
                 // Apply scissor rect (scale from NVG coordinates to framebuffer pixels)

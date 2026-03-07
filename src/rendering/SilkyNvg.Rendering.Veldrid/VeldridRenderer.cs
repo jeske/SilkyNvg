@@ -36,6 +36,13 @@ namespace SilkyNvg.Rendering.Veldrid
         private Shader[]? _texturedShaders;
         private Sampler? _fontAtlasSampler;
 
+        // Pipeline resources - gradient (linear, radial, box gradients)
+        private Pipeline? _gradientPipeline;
+        private ResourceLayout? _gradientResourceLayout;
+        private ResourceSet? _gradientResourceSet;
+        private Shader[]? _gradientShaders;
+        private DeviceBuffer? _gradientUniformBuffer;
+
         // Texture management (font atlas, images, ResourceSet caching)
         private TextureRegistry _textureRegistry = null!; // Initialized in CreateBuffers()
 
@@ -135,6 +142,17 @@ namespace SilkyNvg.Rendering.Veldrid
             _fontAtlasSampler?.Dispose();
             if (_texturedShaders != null) {
                 foreach (var shader in _texturedShaders) {
+                    shader.Dispose();
+                }
+            }
+
+            // Dispose gradient pipeline resources
+            _gradientPipeline?.Dispose();
+            _gradientResourceSet?.Dispose();
+            _gradientResourceLayout?.Dispose();
+            _gradientUniformBuffer?.Dispose();
+            if (_gradientShaders != null) {
+                foreach (var shader in _gradientShaders) {
                     shader.Dispose();
                 }
             }

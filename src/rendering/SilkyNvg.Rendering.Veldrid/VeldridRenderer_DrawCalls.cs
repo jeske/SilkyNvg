@@ -10,6 +10,13 @@ namespace SilkyNvg.Rendering.Veldrid
 {
     public sealed partial class VeldridRenderer
     {
+        private enum DrawCallType : byte
+        {
+            SolidFill,
+            Textured,
+            Gradient
+        }
+
         // Vertex format: position (x,y) + texcoord (u,v) + color (rgba)
         // IMPORTANT: Must use Vector2 and RgbaFloat types to match Veldrid's expected layout!
         [StructLayout(LayoutKind.Sequential)]
@@ -31,7 +38,9 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             public int VertexOffset;
             public int VertexCount;
-            public int TextureId; // 0 = solid fill, non-zero = textured (font atlas or image)
+            public DrawCallType Type;
+            public int TextureId; // Only used when Type == Textured
+            public GradientUniforms GradientParams; // Only used when Type == Gradient
             public bool HasScissor;
             public int ScissorX;
             public int ScissorY;
@@ -68,21 +77,71 @@ namespace SilkyNvg.Rendering.Veldrid
             return true;
         }
 
-        private DrawCall CreateDrawCall(int vertexOffset, int vertexCount, int textureId, Scissor scissor)
+        private DrawCall CreateDrawCall(int vertexOffset, int vertexCount, Paint paint, Scissor scissor)
         {
             var drawCall = new DrawCall
             {
                 VertexOffset = vertexOffset,
                 VertexCount = vertexCount,
-                TextureId = textureId,
                 BlendState = BlendStateDescription.SingleAlphaBlend
             };
+
+            // Determine draw call type based on paint properties
+            if (paint.Image != 0) {
+                drawCall.Type = DrawCallType.Textured;
+                drawCall.TextureId = paint.Image;
+            } else if (IsGradientPaint(paint)) {
+                drawCall.Type = DrawCallType.Gradient;
+                drawCall.GradientParams = ComputeGradientUniforms(paint);
+            } else {
+                drawCall.Type = DrawCallType.SolidFill;
+            }
 
             drawCall.HasScissor = TryExtractScissorRect(scissor,
                 out drawCall.ScissorX, out drawCall.ScissorY,
                 out drawCall.ScissorWidth, out drawCall.ScissorHeight);
 
             return drawCall;
+        }
+
+        /// <summary>
+        /// Detects if a paint represents a gradient (vs solid color).
+        /// A gradient has different inner/outer colors, or non-zero radius/feather.
+        /// </summary>
+        private static bool IsGradientPaint(Paint paint)
+        {
+            // NVG sets radius > 0 for box gradients, feather > 1 for all gradients
+            // Solid colors have feather = 0 and radius = 0
+            return paint.Radius > 0 || paint.Feather > 1.0f ||
+                   !ColorsEqual(paint.InnerColour, paint.OuterColour);
+        }
+
+        private static bool ColorsEqual(Colour colorA, Colour colorB)
+        {
+            return colorA.R == colorB.R && colorA.G == colorB.G &&
+                   colorA.B == colorB.B && colorA.A == colorB.A;
+        }
+
+        /// <summary>
+        /// Computes gradient uniform data from a NVG Paint, matching the OpenGL backend's FragUniforms logic.
+        /// </summary>
+        private static GradientUniforms ComputeGradientUniforms(Paint paint)
+        {
+            Matrix3x2.Invert(paint.Transform, out Matrix3x2 inversePaintTransform);
+
+            return new GradientUniforms
+            {
+                PaintMat = new Matrix4x4(inversePaintTransform),
+                InnerColor = new Vector4(
+                    paint.InnerColour.R, paint.InnerColour.G,
+                    paint.InnerColour.B, paint.InnerColour.A),
+                OuterColor = new Vector4(
+                    paint.OuterColour.R, paint.OuterColour.G,
+                    paint.OuterColour.B, paint.OuterColour.A),
+                Extent = new Vector2(paint.Extent.Width, paint.Extent.Height),
+                Radius = paint.Radius,
+                Feather = MathF.Max(1.0f, paint.Feather)
+            };
         }
 
         public void Fill(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, float fringe, RectangleF bounds, IReadOnlyList<Path> paths)
@@ -107,7 +166,7 @@ namespace SilkyNvg.Rendering.Veldrid
             int vertexCount = _vertexBatch.Count - vertexOffset;
 
             if (vertexCount > 0) {
-                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint.Image, scissor));
+                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint, scissor));
             }
         }
 
@@ -138,7 +197,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             int vertexCount = _vertexBatch.Count - vertexOffset;
             if (vertexCount > 0) {
-                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint.Image, scissor));
+                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint, scissor));
             }
         }
 
@@ -154,7 +213,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             int vertexCount = _vertexBatch.Count - vertexOffset;
             if (vertexCount > 0) {
-                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint.Image, scissor));
+                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint, scissor));
             }
         }
     }

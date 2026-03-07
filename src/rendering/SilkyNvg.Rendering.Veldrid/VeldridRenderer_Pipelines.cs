@@ -33,6 +33,19 @@ namespace SilkyNvg.Rendering.Veldrid
                 "main");
 
             _texturedShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(texturedVertexShaderDesc, texturedFragmentShaderDesc);
+
+            // Gradient shaders (linear, radial, box gradients)
+            var gradientVertexShaderDesc = new ShaderDescription(
+                ShaderStages.Vertex,
+                GetGradientVertexShaderBytes(),
+                "main");
+
+            var gradientFragmentShaderDesc = new ShaderDescription(
+                ShaderStages.Fragment,
+                GetGradientFragmentShaderBytes(),
+                "main");
+
+            _gradientShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(gradientVertexShaderDesc, gradientFragmentShaderDesc);
         }
 
         private void CreatePipeline()
@@ -109,6 +122,37 @@ namespace SilkyNvg.Rendering.Veldrid
             };
 
             _texturedPipeline = factory.CreateGraphicsPipeline(texturedPipelineDesc);
+
+            // === GRADIENT PIPELINE (linear, radial, box gradients) ===
+            // Vertex layout: Position, TexCoord (unused), Color (unused) — same NvgVertex struct
+            var gradientVertexLayout = new VertexLayoutDescription(
+                new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
+                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
+                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
+
+            // Resource layout: ViewSize uniform (vertex) + GradientParams uniform (fragment)
+            _gradientResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+                new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex),
+                new ResourceLayoutElementDescription("GradientParams", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
+
+            var gradientPipelineDesc = new GraphicsPipelineDescription {
+                BlendState = BlendStateDescription.SingleAlphaBlend,
+                DepthStencilState = DepthStencilStateDescription.Disabled,
+                RasterizerState = new RasterizerStateDescription(
+                    cullMode: FaceCullMode.None,
+                    fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise,
+                    depthClipEnabled: false,
+                    scissorTestEnabled: true),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _gradientResourceLayout },
+                ShaderSet = new ShaderSetDescription(
+                    new[] { gradientVertexLayout },
+                    _gradientShaders),
+                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+            };
+
+            _gradientPipeline = factory.CreateGraphicsPipeline(gradientPipelineDesc);
         }
 
         private void CreateBuffers()
@@ -129,6 +173,17 @@ namespace SilkyNvg.Rendering.Veldrid
             _solidFillResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
                 _solidFillResourceLayout,
                 _viewSizeUniformBuffer));
+
+            // Gradient uniform buffer (updated per draw call)
+            _gradientUniformBuffer = factory.CreateBuffer(new BufferDescription(
+                (uint)Marshal.SizeOf<GradientUniforms>(),
+                BufferUsage.UniformBuffer | BufferUsage.Dynamic));
+
+            // Resource set for gradient pipeline (viewSize + gradient params)
+            _gradientResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
+                _gradientResourceLayout,
+                _viewSizeUniformBuffer,
+                _gradientUniformBuffer));
 
             // Create the TextureRegistry now that we have the required Veldrid resources
             _textureRegistry = new TextureRegistry(

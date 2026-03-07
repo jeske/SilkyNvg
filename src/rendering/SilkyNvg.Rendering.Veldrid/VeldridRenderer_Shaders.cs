@@ -185,5 +185,72 @@ void main() {
 ";
             return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);
         }
+
+        private byte[] GetImagePatternVertexShaderBytes()
+        {
+            // Passes world position + texcoord (for AA coverage) to fragment shader
+            string vertexShaderCode = @"
+#version 450
+
+layout(set = 0, binding = 0) uniform ViewSize {
+    vec2 viewSize;
+};
+
+layout(location = 0) in vec2 Position;
+layout(location = 1) in vec2 TexCoord;
+layout(location = 2) in vec4 Color;
+
+layout(location = 0) out vec2 frag_WorldPosition;
+layout(location = 1) out vec2 frag_TexCoord;
+
+void main() {
+    frag_WorldPosition = Position;
+    frag_TexCoord = TexCoord;
+    gl_Position = vec4(2.0 * Position.x / viewSize.x - 1.0, 1.0 - 2.0 * Position.y / viewSize.y, 0.0, 1.0);
+}
+";
+            return System.Text.Encoding.UTF8.GetBytes(vertexShaderCode);
+        }
+
+        private byte[] GetImagePatternFragmentShaderBytes()
+        {
+            // Transforms world position to UV via paintMat, samples RGBA texture, applies tint
+            string fragmentShaderCode = @"
+#version 450
+
+layout(set = 0, binding = 1) uniform ImagePatternParams {
+    mat4 paintMat;
+    vec4 innerCol;
+    vec4 outerCol;
+    vec2 extent;
+    float radius;
+    float feather;
+};
+
+layout(set = 0, binding = 2) uniform texture2D PatternTexture;
+layout(set = 0, binding = 3) uniform sampler PatternSampler;
+
+layout(location = 0) in vec2 frag_WorldPosition;
+layout(location = 1) in vec2 frag_TexCoord;
+
+layout(location = 0) out vec4 out_Color;
+
+void main() {
+    // Transform world position into paint space, normalize to UV by dividing by extent
+    vec2 paintSpacePosition = (paintMat * vec4(frag_WorldPosition, 1.0, 1.0)).xy / extent;
+
+    // Sample the pattern texture
+    vec4 texColor = texture(sampler2D(PatternTexture, PatternSampler), paintSpacePosition);
+
+    // Apply tint color (innerCol) and AA coverage from fringe vertices
+    float fillCoverage = min(1.0, frag_TexCoord.y);
+    float strokeCoverage = min(1.0, (1.0 - abs(frag_TexCoord.x * 2.0 - 1.0)) * 2.0);
+    float aaCoverage = fillCoverage * strokeCoverage;
+
+    out_Color = texColor * innerCol * aaCoverage;
+}
+";
+            return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);
+        }
     }
 }

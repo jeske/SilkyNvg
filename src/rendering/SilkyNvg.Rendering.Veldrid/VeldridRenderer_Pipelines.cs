@@ -65,6 +65,19 @@ namespace SilkyNvg.Rendering.Veldrid
                 "main");
 
             _gradientShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(gradientVertexShaderDesc, gradientFragmentShaderDesc);
+
+            // Image pattern shaders (RGBA texture fill with paintMat UV transform)
+            var imagePatternVertexShaderDesc = new ShaderDescription(
+                ShaderStages.Vertex,
+                GetImagePatternVertexShaderBytes(),
+                "main");
+
+            var imagePatternFragmentShaderDesc = new ShaderDescription(
+                ShaderStages.Fragment,
+                GetImagePatternFragmentShaderBytes(),
+                "main");
+
+            _imagePatternShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(imagePatternVertexShaderDesc, imagePatternFragmentShaderDesc);
         }
 
         private void CreatePipeline()
@@ -173,6 +186,48 @@ namespace SilkyNvg.Rendering.Veldrid
             };
 
             _gradientPipeline = factory.CreateGraphicsPipeline(gradientPipelineDesc);
+
+            // === IMAGE PATTERN PIPELINE (RGBA texture fill with paintMat UV transform) ===
+            var imagePatternVertexLayout = new VertexLayoutDescription(
+                new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
+                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
+                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
+
+            // Resource layout: ViewSize (vertex) + ImagePatternParams (fragment) + Texture + Sampler
+            _imagePatternResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+                new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex),
+                new ResourceLayoutElementDescription("ImagePatternParams", ResourceKind.UniformBuffer, ShaderStages.Fragment),
+                new ResourceLayoutElementDescription("PatternTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
+                new ResourceLayoutElementDescription("PatternSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+
+            // Sampler for image patterns (linear filtering, clamp to edge)
+            _imagePatternSampler = factory.CreateSampler(new SamplerDescription {
+                AddressModeU = SamplerAddressMode.Clamp,
+                AddressModeV = SamplerAddressMode.Clamp,
+                AddressModeW = SamplerAddressMode.Clamp,
+                Filter = SamplerFilter.MinLinear_MagLinear_MipLinear,
+                MinimumLod = 0,
+                MaximumLod = 0
+            });
+
+            var imagePatternPipelineDesc = new GraphicsPipelineDescription {
+                BlendState = BlendStateDescription.SingleAlphaBlend,
+                DepthStencilState = DepthStencilDisabledExplicit,
+                RasterizerState = new RasterizerStateDescription(
+                    cullMode: FaceCullMode.None,
+                    fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise,
+                    depthClipEnabled: false,
+                    scissorTestEnabled: true),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _imagePatternResourceLayout },
+                ShaderSet = new ShaderSetDescription(
+                    new[] { imagePatternVertexLayout },
+                    _imagePatternShaders),
+                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+            };
+
+            _imagePatternPipeline = factory.CreateGraphicsPipeline(imagePatternPipelineDesc);
         }
 
         private void CreateBuffers()

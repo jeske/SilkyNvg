@@ -100,6 +100,28 @@ namespace SilkyNvg.Rendering.Veldrid
                         commandList.SetGraphicsResourceSet(0, _gradientResourceSet);
                         lastBoundTextureId = -1;
                         break;
+
+                    case DrawCallType.ImagePattern:
+                        // Update uniform buffer with paintMat/extent/innerColor for this image pattern
+                        _graphicsDevice.UpdateBuffer(_gradientUniformBuffer, 0, drawCall.GradientParams);
+                        if (lastPipelineType != DrawCallType.ImagePattern) {
+                            commandList.SetPipeline(_imagePatternPipeline);
+                            lastPipelineType = DrawCallType.ImagePattern;
+                        }
+                        // Get or create cached resource set for this texture
+                        if (!_imagePatternResourceSetCache.TryGetValue(drawCall.TextureId, out var imagePatternResourceSet)) {
+                            var patternTextureView = _textureRegistry.GetTextureView(drawCall.TextureId);
+                            imagePatternResourceSet = _graphicsDevice.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
+                                _imagePatternResourceLayout,
+                                _viewSizeUniformBuffer,
+                                _gradientUniformBuffer,
+                                patternTextureView,
+                                _imagePatternSampler));
+                            _imagePatternResourceSetCache[drawCall.TextureId] = imagePatternResourceSet;
+                        }
+                        commandList.SetGraphicsResourceSet(0, imagePatternResourceSet);
+                        lastBoundTextureId = drawCall.TextureId;
+                        break;
                 }
 
                 // Apply scissor rect (scale from NVG coordinates to framebuffer pixels)

@@ -157,6 +157,20 @@ namespace SilkyNvg.Rendering.Veldrid
         }
 
         /// <summary>
+        /// Gets the TextureView for a given texture ID.
+        /// Used by VeldridRenderer to create image pattern resource sets.
+        /// </summary>
+        public TextureView GetTextureView(int textureId)
+        {
+            if (!_textures.TryGetValue(textureId, out var managedTexture)) {
+                throw new InvalidOperationException(
+                    $"TextureRegistry.GetTextureView: Texture ID {textureId} not found. " +
+                    "A draw call references a texture that was never created or was already deleted.");
+            }
+            return managedTexture.TextureView;
+        }
+
+        /// <summary>
         /// Gets or creates a ResourceSet for the textured pipeline bound to the given texture.
         /// Caches ResourceSets so they aren't recreated every frame.
         /// </summary>

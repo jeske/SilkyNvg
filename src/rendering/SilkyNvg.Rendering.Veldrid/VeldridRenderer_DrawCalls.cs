@@ -13,8 +13,9 @@ namespace SilkyNvg.Rendering.Veldrid
         private enum DrawCallType : byte
         {
             SolidFill,
-            Textured,
-            Gradient
+            Textured,       // Font atlas text (R8_UNorm alpha, UV from vertices)
+            Gradient,       // Linear/radial/box gradients (SDF in paint space)
+            ImagePattern    // Image fill (RGBA texture, UV from paintMat transform)
         }
 
         // Vertex format: position (x,y) + texcoord (u,v) + color (rgba)
@@ -88,8 +89,10 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // Determine draw call type based on paint properties
             if (paint.Image != 0) {
-                drawCall.Type = DrawCallType.Textured;
+                // Image pattern fill: transform world position to UV via paintMat
+                drawCall.Type = DrawCallType.ImagePattern;
                 drawCall.TextureId = paint.Image;
+                drawCall.GradientParams = ComputeGradientUniforms(paint);
             } else if (IsGradientPaint(paint)) {
                 drawCall.Type = DrawCallType.Gradient;
                 drawCall.GradientParams = ComputeGradientUniforms(paint);
@@ -218,7 +221,9 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public void Triangles(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, ICollection<Vertex> vertices, float fringeWidth)
         {
-            // Text rendering: paint.Image contains the font atlas texture ID
+            // Text rendering: paint.Image contains the font atlas texture ID.
+            // Vertices already have proper UV coordinates from FontStash.
+            // Force DrawCallType.Textured (font atlas pipeline) — NOT ImagePattern.
             var color = paint.InnerColour;
             int vertexOffset = _vertexBatch.Count;
 
@@ -228,7 +233,11 @@ namespace SilkyNvg.Rendering.Veldrid
 
             int vertexCount = _vertexBatch.Count - vertexOffset;
             if (vertexCount > 0) {
-                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint, scissor));
+                var drawCall = CreateDrawCall(vertexOffset, vertexCount, paint, scissor);
+                // Override: text always uses the font atlas textured pipeline
+                drawCall.Type = DrawCallType.Textured;
+                drawCall.TextureId = paint.Image;
+                _drawCalls.Add(drawCall);
             }
         }
     }

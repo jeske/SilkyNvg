@@ -43,6 +43,13 @@ namespace SilkyNvg.Rendering.Veldrid
         private Shader[]? _gradientShaders;
         private DeviceBuffer? _gradientUniformBuffer;
 
+        // Pipeline resources - image pattern (RGBA texture fill with paintMat UV transform)
+        private Pipeline? _imagePatternPipeline;
+        private ResourceLayout? _imagePatternResourceLayout;
+        private Shader[]? _imagePatternShaders;
+        private Sampler? _imagePatternSampler;
+        private readonly Dictionary<int, ResourceSet> _imagePatternResourceSetCache = new();
+
         // Texture management (font atlas, images, ResourceSet caching)
         private TextureRegistry _textureRegistry = null!; // Initialized in CreateBuffers()
 
@@ -156,6 +163,20 @@ namespace SilkyNvg.Rendering.Veldrid
                     shader.Dispose();
                 }
             }
+
+            // Dispose image pattern pipeline resources
+            _imagePatternPipeline?.Dispose();
+            _imagePatternResourceLayout?.Dispose();
+            _imagePatternSampler?.Dispose();
+            if (_imagePatternShaders != null) {
+                foreach (var shader in _imagePatternShaders) {
+                    shader.Dispose();
+                }
+            }
+            foreach (var kvp in _imagePatternResourceSetCache) {
+                kvp.Value.Dispose();
+            }
+            _imagePatternResourceSetCache.Clear();
 
             // Dispose shared resources
             _vertexBuffer?.Dispose();

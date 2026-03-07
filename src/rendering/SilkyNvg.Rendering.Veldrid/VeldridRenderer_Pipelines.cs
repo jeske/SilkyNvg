@@ -57,7 +57,7 @@ namespace SilkyNvg.Rendering.Veldrid
                     fillMode: PolygonFillMode.Solid,
                     frontFace: FrontFace.CounterClockwise,
                     depthClipEnabled: false,
-                    scissorTestEnabled: false),
+                    scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _solidFillResourceLayout },
                 ShaderSet = new ShaderSetDescription(
@@ -99,7 +99,7 @@ namespace SilkyNvg.Rendering.Veldrid
                     fillMode: PolygonFillMode.Solid,
                     frontFace: FrontFace.CounterClockwise,
                     depthClipEnabled: false,
-                    scissorTestEnabled: false),
+                    scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _texturedResourceLayout },
                 ShaderSet = new ShaderSetDescription(

@@ -51,10 +51,22 @@ namespace SilkyNvg.Rendering.Veldrid
             // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);
 
-            // Execute draw calls, switching pipeline per call based on TextureId
+            // Default scissor to full framebuffer (scissor test is always enabled in pipelines)
+            // IMPORTANT: Use framebuffer dimensions, not NVG viewport — scissor rect is in pixel coordinates
+            uint fullFramebufferWidth = _graphicsDevice.SwapchainFramebuffer.Width;
+            uint fullFramebufferHeight = _graphicsDevice.SwapchainFramebuffer.Height;
+            commandList.SetScissorRect(0, 0, 0, fullFramebufferWidth, fullFramebufferHeight);
+
+            // Scale factor from NVG coordinates to framebuffer pixels
+            float nvgToFramebufferScaleX = _viewportSize.Width > 0 ? fullFramebufferWidth / _viewportSize.Width : 1.0f;
+            float nvgToFramebufferScaleY = _viewportSize.Height > 0 ? fullFramebufferHeight / _viewportSize.Height : 1.0f;
+
+            // Execute draw calls, switching pipeline and scissor per call
             int lastBoundTextureId = -1;
+            bool lastScissorWasFullViewport = true;
             foreach (var drawCall in _drawCalls)
             {
+                // Switch pipeline if texture changed
                 if (drawCall.TextureId != lastBoundTextureId)
                 {
                     if (drawCall.TextureId == 0)
@@ -69,6 +81,24 @@ namespace SilkyNvg.Rendering.Veldrid
                         commandList.SetGraphicsResourceSet(0, texturedResourceSet);
                     }
                     lastBoundTextureId = drawCall.TextureId;
+                }
+
+                // Apply scissor rect (scale from NVG coordinates to framebuffer pixels)
+                if (drawCall.HasScissor)
+                {
+                    uint scaledScissorX = (uint)Math.Max(0, (int)(drawCall.ScissorX * nvgToFramebufferScaleX));
+                    uint scaledScissorY = (uint)Math.Max(0, (int)(drawCall.ScissorY * nvgToFramebufferScaleY));
+                    uint scaledScissorWidth = (uint)(drawCall.ScissorWidth * nvgToFramebufferScaleX);
+                    uint scaledScissorHeight = (uint)(drawCall.ScissorHeight * nvgToFramebufferScaleY);
+                    commandList.SetScissorRect(0,
+                        scaledScissorX, scaledScissorY,
+                        scaledScissorWidth, scaledScissorHeight);
+                    lastScissorWasFullViewport = false;
+                }
+                else if (!lastScissorWasFullViewport)
+                {
+                    commandList.SetScissorRect(0, 0, 0, fullFramebufferWidth, fullFramebufferHeight);
+                    lastScissorWasFullViewport = true;
                 }
 
                 commandList.Draw((uint)drawCall.VertexCount, 1, (uint)drawCall.VertexOffset, 0);

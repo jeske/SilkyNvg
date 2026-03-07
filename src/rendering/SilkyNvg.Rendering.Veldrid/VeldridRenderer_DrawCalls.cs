@@ -32,7 +32,57 @@ namespace SilkyNvg.Rendering.Veldrid
             public int VertexOffset;
             public int VertexCount;
             public int TextureId; // 0 = solid fill, non-zero = textured (font atlas or image)
+            public bool HasScissor;
+            public int ScissorX;
+            public int ScissorY;
+            public uint ScissorWidth;
+            public uint ScissorHeight;
             public BlendStateDescription BlendState;
+        }
+
+        /// <summary>
+        /// Extracts an axis-aligned scissor rect from the NVG Scissor.
+        /// Scissor.Transform positions the center, Scissor.Extent is the half-size.
+        /// Returns false if scissor is disabled (extent &lt; -0.5).
+        /// </summary>
+        private static bool TryExtractScissorRect(Scissor scissor, out int scissorX, out int scissorY, out uint scissorWidth, out uint scissorHeight)
+        {
+            if (scissor.Extent.Width < -0.5f || scissor.Extent.Height < -0.5f) {
+                scissorX = 0;
+                scissorY = 0;
+                scissorWidth = 0;
+                scissorHeight = 0;
+                return false;
+            }
+
+            // Scissor center is at Transform translation, extent is half-size
+            float centerX = scissor.Transform.M31;
+            float centerY = scissor.Transform.M32;
+            float halfWidth = scissor.Extent.Width;
+            float halfHeight = scissor.Extent.Height;
+
+            scissorX = Math.Max(0, (int)(centerX - halfWidth));
+            scissorY = Math.Max(0, (int)(centerY - halfHeight));
+            scissorWidth = (uint)Math.Max(0, (int)(halfWidth * 2.0f));
+            scissorHeight = (uint)Math.Max(0, (int)(halfHeight * 2.0f));
+            return true;
+        }
+
+        private DrawCall CreateDrawCall(int vertexOffset, int vertexCount, int textureId, Scissor scissor)
+        {
+            var drawCall = new DrawCall
+            {
+                VertexOffset = vertexOffset,
+                VertexCount = vertexCount,
+                TextureId = textureId,
+                BlendState = BlendStateDescription.SingleAlphaBlend
+            };
+
+            drawCall.HasScissor = TryExtractScissorRect(scissor,
+                out drawCall.ScissorX, out drawCall.ScissorY,
+                out drawCall.ScissorWidth, out drawCall.ScissorHeight);
+
+            return drawCall;
         }
 
         public void Fill(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, float fringe, RectangleF bounds, IReadOnlyList<Path> paths)
@@ -57,13 +107,7 @@ namespace SilkyNvg.Rendering.Veldrid
             int vertexCount = _vertexBatch.Count - vertexOffset;
 
             if (vertexCount > 0) {
-                _drawCalls.Add(new DrawCall
-                {
-                    VertexOffset = vertexOffset,
-                    VertexCount = vertexCount,
-                    TextureId = paint.Image,
-                    BlendState = BlendStateDescription.SingleAlphaBlend
-                });
+                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint.Image, scissor));
             }
         }
 
@@ -94,13 +138,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             int vertexCount = _vertexBatch.Count - vertexOffset;
             if (vertexCount > 0) {
-                _drawCalls.Add(new DrawCall
-                {
-                    VertexOffset = vertexOffset,
-                    VertexCount = vertexCount,
-                    TextureId = paint.Image,
-                    BlendState = BlendStateDescription.SingleAlphaBlend
-                });
+                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint.Image, scissor));
             }
         }
 
@@ -116,13 +154,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             int vertexCount = _vertexBatch.Count - vertexOffset;
             if (vertexCount > 0) {
-                _drawCalls.Add(new DrawCall
-                {
-                    VertexOffset = vertexOffset,
-                    VertexCount = vertexCount,
-                    TextureId = paint.Image,
-                    BlendState = BlendStateDescription.SingleAlphaBlend
-                });
+                _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint.Image, scissor));
             }
         }
     }

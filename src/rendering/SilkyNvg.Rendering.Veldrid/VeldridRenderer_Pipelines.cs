@@ -180,6 +180,8 @@ namespace SilkyNvg.Rendering.Veldrid
             // === STENCIL FILL PIPELINE (Pass 1: write winding count to stencil, no color output) ===
             // Non-zero winding rule: front faces increment, back faces decrement.
             // CullMode must be None so both face orientations contribute to the winding count.
+            // In concave areas where triangles overlap with opposite winding, increments and
+            // decrements cancel to 0, so the cover quad won't draw there.
             var stencilFillPipelineDesc = new GraphicsPipelineDescription {
                 BlendState = new BlendStateDescription {
                     AttachmentStates = new[] {
@@ -190,11 +192,14 @@ namespace SilkyNvg.Rendering.Veldrid
                     DepthTestEnabled = false,
                     DepthWriteEnabled = false,
                     StencilTestEnabled = true,
+                    // Non-zero winding rule: front faces increment, back faces decrement.
+                    // All three ops set to same value because with DepthTestEnabled=false,
+                    // some drivers route through depthFail instead of pass.
                     StencilFront = new StencilBehaviorDescription(
-                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.IncrementAndWrap, StencilOperation.IncrementAndWrap,
                         StencilOperation.IncrementAndWrap, ComparisonKind.Always),
                     StencilBack = new StencilBehaviorDescription(
-                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.DecrementAndWrap, StencilOperation.DecrementAndWrap,
                         StencilOperation.DecrementAndWrap, ComparisonKind.Always),
                     StencilReadMask = 0xFF,
                     StencilWriteMask = 0xFF,
@@ -225,6 +230,7 @@ namespace SilkyNvg.Rendering.Veldrid
                     DepthTestEnabled = false,
                     DepthWriteEnabled = false,
                     StencilTestEnabled = true,
+                    // Restore NotEqual test — should now work if stencil fill writes ref=1
                     StencilFront = new StencilBehaviorDescription(
                         StencilOperation.Zero, StencilOperation.Zero,
                         StencilOperation.Zero, ComparisonKind.NotEqual),

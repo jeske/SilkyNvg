@@ -161,6 +161,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 // Execute draw (NonConvexFill has its own multi-pass draw sequence)
                 if (drawCall.Type == DrawCallType.NonConvexFill) {
                     // === TWO-PASS STENCIL-THEN-COVER for non-convex paths ===
+                    // Stencil is already cleared to 0 by ClearDepthStencil in GameLoop.
 
                     // Pass 1: Write winding count to stencil buffer (no color output)
                     // Front faces increment, back faces decrement (non-zero winding rule)
@@ -192,10 +193,8 @@ namespace SilkyNvg.Rendering.Veldrid
         /// </summary>
         public void DrawTestTriangle(CommandList commandList)
         {
-            if (!_isInitialized)
-            {
-                if (!Create())
-                {
+            if (!_isInitialized) {
+                if (!Create()) {
                     return;
                 }
             }
@@ -219,5 +218,141 @@ namespace SilkyNvg.Rendering.Veldrid
             commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
             commandList.Draw(3, 1, 0, 0);
         }
+
+        /// <summary>
+        /// DEBUG: Draw a checkerboard "debug clear" into stencil, then draw the real NVG path
+        /// triangles on top, then draw the cover quad reading the combined stencil.
+        ///
+        /// The checkerboard provides a known visible baseline pattern in the stencil buffer.
+        /// The NVG path triangles are drawn ON TOP — they'll fill in the checkerboard gaps
+        /// where they cover, making those areas solid (no checkerboard pattern).
+        ///
+        /// What you'll see:
+        ///   - Checkerboard pattern = stencil from debug clear only (NVG triangles missed here)
+        ///   - Solid fill areas = NVG triangles wrote stencil here (overwriting checkerboard gaps)
+        ///   - Empty areas = neither checkerboard nor NVG triangles covered this pixel
+        /// </summary>
+        private void DrawNonConvexFillWithDebugClearCheckerboard(CommandList commandList, DrawCall drawCall)
+        {
+            // Log framebuffer output description once for diagnostics
+            if (_debugLogNextStencilCheckerboard) {
+                _debugLogNextStencilCheckerboard = false;
+                var outputDesc = _graphicsDevice.SwapchainFramebuffer.OutputDescription;
+                Console.WriteLine($"[StencilDebug] Framebuffer OutputDescription:");
+                Console.WriteLine($"  DepthAttachment: {(outputDesc.DepthAttachment.HasValue ? outputDesc.DepthAttachment.Value.Format.ToString() : "NONE")}");
+                Console.WriteLine($"  ColorAttachments: {outputDesc.ColorAttachments.Length}");
+                for (int i = 0; i < outputDesc.ColorAttachments.Length; i++) {
+                    Console.WriteLine($"    [{i}] Format={outputDesc.ColorAttachments[i].Format}");
+                }
+                Console.WriteLine($"  SampleCount: {outputDesc.SampleCount}");
+                Console.WriteLine($"  StencilFillVertexCount: {drawCall.StencilFillVertexCount}");
+                Console.WriteLine($"  CoverQuadVertexOffset: {drawCall.CoverQuadVertexOffset}");
+            }
+
+            // Extract cover quad bounds from the existing cover quad vertices in _vertexBatch
+            // Cover quad is 6 vertices starting at drawCall.CoverQuadVertexOffset
+            // Vertices are: TL, TR, BR, TL, BR, BL — so TL is [0], BR is [2]
+            var coverTopLeft = _vertexBatch[drawCall.CoverQuadVertexOffset].Position;
+            var coverBottomRight = _vertexBatch[drawCall.CoverQuadVertexOffset + 2].Position;
+            float boundsLeft = coverTopLeft.X;
+            float boundsTop = coverTopLeft.Y;
+            float boundsRight = coverBottomRight.X;
+            float boundsBottom = coverBottomRight.Y;
+
+            // Generate checkerboard quads covering the cover quad bounds
+            const int checkerCellSize = 6; // 6x6 pixel cells
+            int cellStartX = (int)Math.Floor(boundsLeft / checkerCellSize);
+            int cellStartY = (int)Math.Floor(boundsTop / checkerCellSize);
+            int cellEndX = (int)Math.Ceiling(boundsRight / checkerCellSize);
+            int cellEndY = (int)Math.Ceiling(boundsBottom / checkerCellSize);
+
+            // Count "on" cells for checkerboard
+            int stencilQuadCount = 0;
+            for (int cellY = cellStartY; cellY < cellEndY; cellY++) {
+                for (int cellX = cellStartX; cellX < cellEndX; cellX++) {
+                    if ((cellX + cellY) % 2 == 0) {
+                        stencilQuadCount++;
+                    }
+                }
+            }
+
+            // Build checkerboard vertex array (6 verts per quad)
+            int checkerboardVertexCount = stencilQuadCount * 6;
+            var checkerboardVertices = new ShaderLayouts.NvgVertex[checkerboardVertexCount];
+            int writeIdx = 0;
+
+            for (int cellY = cellStartY; cellY < cellEndY; cellY++) {
+                for (int cellX = cellStartX; cellX < cellEndX; cellX++) {
+                    if ((cellX + cellY) % 2 == 0) {
+                        float quadLeft = cellX * checkerCellSize;
+                        float quadTop = cellY * checkerCellSize;
+                        float quadRight = quadLeft + checkerCellSize;
+                        float quadBottom = quadTop + checkerCellSize;
+
+                        // Triangle 1: TL, TR, BR
+                        checkerboardVertices[writeIdx++] = new ShaderLayouts.NvgVertex {
+                            Position = new Vector2(quadLeft, quadTop), TexCoord = new Vector2(0, 1), Color = new RgbaFloat(1, 0, 1, 1)
+                        };
+                        checkerboardVertices[writeIdx++] = new ShaderLayouts.NvgVertex {
+                            Position = new Vector2(quadRight, quadTop), TexCoord = new Vector2(0, 1), Color = new RgbaFloat(1, 0, 1, 1)
+                        };
+                        checkerboardVertices[writeIdx++] = new ShaderLayouts.NvgVertex {
+                            Position = new Vector2(quadRight, quadBottom), TexCoord = new Vector2(0, 1), Color = new RgbaFloat(1, 0, 1, 1)
+                        };
+                        // Triangle 2: TL, BR, BL
+                        checkerboardVertices[writeIdx++] = new ShaderLayouts.NvgVertex {
+                            Position = new Vector2(quadLeft, quadTop), TexCoord = new Vector2(0, 1), Color = new RgbaFloat(1, 0, 1, 1)
+                        };
+                        checkerboardVertices[writeIdx++] = new ShaderLayouts.NvgVertex {
+                            Position = new Vector2(quadRight, quadBottom), TexCoord = new Vector2(0, 1), Color = new RgbaFloat(1, 0, 1, 1)
+                        };
+                        checkerboardVertices[writeIdx++] = new ShaderLayouts.NvgVertex {
+                            Position = new Vector2(quadLeft, quadBottom), TexCoord = new Vector2(0, 1), Color = new RgbaFloat(1, 0, 1, 1)
+                        };
+                    }
+                }
+            }
+
+            // Upload checkerboard vertices to a temporary section of the vertex buffer
+            // We need to upload AFTER the main vertex batch, so we use a separate buffer upload
+            // Strategy: use _graphicsDevice.UpdateBuffer to append checkerboard data after the batch
+            uint batchByteSize = (uint)(_vertexBatch.Count * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
+            uint checkerByteSize = (uint)(checkerboardVertices.Length * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
+            uint totalRequired = batchByteSize + checkerByteSize;
+
+            // Resize vertex buffer if needed
+            if (_vertexBuffer!.SizeInBytes < totalRequired) {
+                _vertexBuffer.Dispose();
+                _vertexBuffer = _graphicsDevice.ResourceFactory.CreateBuffer(new BufferDescription(
+                    totalRequired * 2,
+                    BufferUsage.VertexBuffer | BufferUsage.Dynamic));
+                // Re-upload the main batch since we recreated the buffer
+                _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, _vertexBatch.ToArray());
+                commandList.SetVertexBuffer(0, _vertexBuffer);
+            }
+
+            // Append checkerboard vertices after the main batch
+            uint checkerboardVertexOffset = (uint)_vertexBatch.Count;
+            _graphicsDevice.UpdateBuffer(_vertexBuffer, batchByteSize, checkerboardVertices);
+
+            // Pass 1a: Write stencil checkerboard — "debug clear" (no color output)
+            commandList.SetPipeline(_stencilFillPipeline);
+            commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+            commandList.Draw((uint)checkerboardVertexCount, 1, checkerboardVertexOffset, 0);
+
+            // Pass 1b: Write real NVG path triangles into stencil ON TOP of checkerboard
+            // These use the same _stencilFillPipeline (Replace ref=1), so they'll fill in
+            // the checkerboard gaps wherever the NVG triangles cover pixels.
+            commandList.Draw(
+                (uint)drawCall.StencilFillVertexCount, 1,
+                (uint)drawCall.VertexOffset, 0);
+
+            // Pass 2: Draw the existing cover quad where stencil != 0
+            commandList.SetPipeline(_stencilCoverSolidPipeline);
+            commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+            commandList.Draw(6, 1, (uint)drawCall.CoverQuadVertexOffset, 0);
+        }
+
+        private bool _debugLogNextStencilCheckerboard = true;
     }
 }

@@ -198,10 +198,10 @@ namespace SilkyNvg.Rendering.Veldrid
                 _viewSizeUniformBuffer));
 
             // Paint uniform buffer — shared by gradient and image pattern pipelines (updated per draw call)
-            // NOT Dynamic — must use commandList.UpdateBuffer() for proper per-draw-call sequencing
+            // Dynamic for CPU-accessible memory; updated via commandList.UpdateBuffer() for proper sequencing
             _paintUniformBuffer = factory.CreateBuffer(new BufferDescription(
                 (uint)Marshal.SizeOf<ShaderLayouts.PaintUniforms>(),
-                BufferUsage.UniformBuffer));
+                BufferUsage.UniformBuffer | BufferUsage.Dynamic));
 
             // Resource set for gradient pipeline (viewSize + paint params)
             _gradientResourceSet = factory.CreateResourceSet(new ResourceSetDescription(

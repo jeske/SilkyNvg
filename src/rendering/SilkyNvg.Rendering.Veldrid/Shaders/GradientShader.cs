@@ -31,11 +31,11 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 2) in vec4 Color;
 
 layout(location = 0) out vec2 frag_WorldPosition;
-layout(location = 1) out float frag_AACoverage;
+layout(location = 1) out vec2 frag_TexCoord;
 
 void main() {
     frag_WorldPosition = Position;
-    frag_AACoverage = TexCoord.y;
+    frag_TexCoord = TexCoord;
     gl_Position = vec4(2.0 * Position.x / viewSize.x - 1.0, 1.0 - 2.0 * Position.y / viewSize.y, 0.0, 1.0);
 }
 ";
@@ -67,7 +67,7 @@ layout(set = 0, binding = 1) uniform GradientParams {
 };
 
 layout(location = 0) in vec2 frag_WorldPosition;
-layout(location = 1) in float frag_AACoverage;
+layout(location = 1) in vec2 frag_TexCoord;
 
 layout(location = 0) out vec4 out_Color;
 
@@ -84,9 +84,9 @@ void main() {
     // Compute signed distance to rounded rectangle
     float d = clamp((sdroundrect(pt, extent, radius) + feather * 0.5) / feather, 0.0, 1.0);
 
-    // Mix between inner and outer colors, apply AA coverage
+    // Mix between inner and outer colors, apply AA coverage from frag_TexCoord.y
     vec4 colour = mix(innerCol, outerCol, d);
-    out_Color = vec4(colour.rgb, colour.a * frag_AACoverage);
+    out_Color = vec4(colour.rgb, colour.a * frag_TexCoord.y);
 }
 ";
             return System.Text.Encoding.UTF8.GetBytes(fragmentShaderCode);

@@ -107,8 +107,8 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
 
                     case DrawCallType.Gradient:
-                        // Update paint uniform buffer with this draw call's gradient parameters
-                        _graphicsDevice.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
+                        // Update paint uniform buffer via command list for proper per-draw-call sequencing
+                        commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
                         if (lastPipelineType != DrawCallType.Gradient) {
                             commandList.SetPipeline(_gradientPipeline);
                             lastPipelineType = DrawCallType.Gradient;
@@ -118,8 +118,8 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
 
                     case DrawCallType.ImagePattern:
-                        // Update paint uniform buffer with this draw call's image pattern parameters
-                        _graphicsDevice.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
+                        // Update paint uniform buffer via command list for proper per-draw-call sequencing
+                        commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
                         if (lastPipelineType != DrawCallType.ImagePattern) {
                             commandList.SetPipeline(_imagePatternPipeline);
                             lastPipelineType = DrawCallType.ImagePattern;

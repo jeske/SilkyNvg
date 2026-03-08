@@ -36,7 +36,7 @@ namespace SilkyNvg.Rendering.Veldrid
             _graphicsDevice.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
 
             // Resize vertex buffer if needed
-            uint requiredVertexBufferSize = (uint)(_vertexBatch.Count * Marshal.SizeOf<NvgVertex>());
+            uint requiredVertexBufferSize = (uint)(_vertexBatch.Count * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
             if (_vertexBuffer!.SizeInBytes < requiredVertexBufferSize)
             {
                 _vertexBuffer.Dispose();
@@ -60,6 +60,22 @@ namespace SilkyNvg.Rendering.Veldrid
             // Scale factor from NVG coordinates to framebuffer pixels
             float nvgToFramebufferScaleX = _viewportSize.Width > 0 ? fullFramebufferWidth / _viewportSize.Width : 1.0f;
             float nvgToFramebufferScaleY = _viewportSize.Height > 0 ? fullFramebufferHeight / _viewportSize.Height : 1.0f;
+
+            // DEBUG: Log draw call types once to diagnose gradient issue
+            if (_debugLogNextFlush) {
+                _debugLogNextFlush = false;
+                Console.WriteLine($"[VeldridRenderer.Flush] {_drawCalls.Count} draw calls:");
+                for (int debugIdx = 0; debugIdx < _drawCalls.Count; debugIdx++) {
+                    var debugDrawCall = _drawCalls[debugIdx];
+                    Console.WriteLine($"  [{debugIdx}] Type={debugDrawCall.Type}, VertexOffset={debugDrawCall.VertexOffset}, VertexCount={debugDrawCall.VertexCount}, TextureId={debugDrawCall.TextureId}");
+                    if (debugDrawCall.Type == DrawCallType.Gradient || debugDrawCall.Type == DrawCallType.ImagePattern) {
+                        var paintParams = debugDrawCall.PaintParams;
+                        Console.WriteLine($"       InnerColor=({paintParams.InnerColor.X:F2},{paintParams.InnerColor.Y:F2},{paintParams.InnerColor.Z:F2},{paintParams.InnerColor.W:F2})");
+                        Console.WriteLine($"       OuterColor=({paintParams.OuterColor.X:F2},{paintParams.OuterColor.Y:F2},{paintParams.OuterColor.Z:F2},{paintParams.OuterColor.W:F2})");
+                        Console.WriteLine($"       Extent=({paintParams.Extent.X:F2},{paintParams.Extent.Y:F2}), Radius={paintParams.Radius:F2}, Feather={paintParams.Feather:F2}");
+                    }
+                }
+            }
 
             // Execute draw calls, switching pipeline and scissor per call
             DrawCallType lastPipelineType = (DrawCallType)255; // Force first switch
@@ -91,8 +107,8 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
 
                     case DrawCallType.Gradient:
-                        // Update gradient uniform buffer with this draw call's parameters
-                        _graphicsDevice.UpdateBuffer(_gradientUniformBuffer, 0, drawCall.GradientParams);
+                        // Update paint uniform buffer with this draw call's gradient parameters
+                        _graphicsDevice.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
                         if (lastPipelineType != DrawCallType.Gradient) {
                             commandList.SetPipeline(_gradientPipeline);
                             lastPipelineType = DrawCallType.Gradient;
@@ -102,8 +118,8 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
 
                     case DrawCallType.ImagePattern:
-                        // Update uniform buffer with paintMat/extent/innerColor for this image pattern
-                        _graphicsDevice.UpdateBuffer(_gradientUniformBuffer, 0, drawCall.GradientParams);
+                        // Update paint uniform buffer with this draw call's image pattern parameters
+                        _graphicsDevice.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
                         if (lastPipelineType != DrawCallType.ImagePattern) {
                             commandList.SetPipeline(_imagePatternPipeline);
                             lastPipelineType = DrawCallType.ImagePattern;
@@ -114,7 +130,7 @@ namespace SilkyNvg.Rendering.Veldrid
                             imagePatternResourceSet = _graphicsDevice.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
                                 _imagePatternResourceLayout,
                                 _viewSizeUniformBuffer,
-                                _gradientUniformBuffer,
+                                _paintUniformBuffer,
                                 patternTextureView,
                                 _imagePatternSampler));
                             _imagePatternResourceSetCache[drawCall.TextureId] = imagePatternResourceSet;
@@ -165,11 +181,11 @@ namespace SilkyNvg.Rendering.Veldrid
             float viewWidth = _viewportSize.Width > 0 ? _viewportSize.Width : 800;
             float viewHeight = _viewportSize.Height > 0 ? _viewportSize.Height : 600;
 
-            var testTriangleVertices = new NvgVertex[]
+            var testTriangleVertices = new ShaderLayouts.NvgVertex[]
             {
-                new NvgVertex { Position = new Vector2(viewWidth * 0.5f, viewHeight * 0.2f), TexCoord = Vector2.Zero, Color = new RgbaFloat(1, 0, 0, 1) },
-                new NvgVertex { Position = new Vector2(viewWidth * 0.2f, viewHeight * 0.8f), TexCoord = Vector2.Zero, Color = new RgbaFloat(0, 1, 0, 1) },
-                new NvgVertex { Position = new Vector2(viewWidth * 0.8f, viewHeight * 0.8f), TexCoord = Vector2.Zero, Color = new RgbaFloat(0, 0, 1, 1) },
+                new ShaderLayouts.NvgVertex { Position = new Vector2(viewWidth * 0.5f, viewHeight * 0.2f), TexCoord = Vector2.Zero, Color = new RgbaFloat(1, 0, 0, 1) },
+                new ShaderLayouts.NvgVertex { Position = new Vector2(viewWidth * 0.2f, viewHeight * 0.8f), TexCoord = Vector2.Zero, Color = new RgbaFloat(0, 1, 0, 1) },
+                new ShaderLayouts.NvgVertex { Position = new Vector2(viewWidth * 0.8f, viewHeight * 0.8f), TexCoord = Vector2.Zero, Color = new RgbaFloat(0, 0, 1, 1) },
             };
 
             var viewSizeData = new Vector4(viewWidth, viewHeight, 0, 0);

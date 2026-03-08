@@ -41,7 +41,7 @@ namespace SilkyNvg.Rendering.Veldrid
         private ResourceLayout? _gradientResourceLayout;
         private ResourceSet? _gradientResourceSet;
         private Shader[]? _gradientShaders;
-        private DeviceBuffer? _gradientUniformBuffer;
+        private DeviceBuffer? _paintUniformBuffer;
 
         // Pipeline resources - image pattern (RGBA texture fill with paintMat UV transform)
         private Pipeline? _imagePatternPipeline;
@@ -54,10 +54,11 @@ namespace SilkyNvg.Rendering.Veldrid
         private TextureRegistry _textureRegistry = null!; // Initialized in CreateBuffers()
 
         // Batching
-        private readonly List<NvgVertex> _vertexBatch = new(4096);
+        private readonly List<ShaderLayouts.NvgVertex> _vertexBatch = new(4096);
         private readonly List<DrawCall> _drawCalls = new(64);
         private SizeF _viewportSize;
         private bool _isInitialized;
+        private bool _debugLogNextFlush = true; // Log draw calls on first flush for debugging
 
         // Active command list for rendering - MUST be set before BeginFrame/EndFrame!
         // Veldrid requires explicit CommandList management (unlike OpenGL's immediate mode).
@@ -157,7 +158,7 @@ namespace SilkyNvg.Rendering.Veldrid
             _gradientPipeline?.Dispose();
             _gradientResourceSet?.Dispose();
             _gradientResourceLayout?.Dispose();
-            _gradientUniformBuffer?.Dispose();
+            _paintUniformBuffer?.Dispose();
             if (_gradientShaders != null) {
                 foreach (var shader in _gradientShaders) {
                     shader.Dispose();

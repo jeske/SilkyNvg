@@ -3,7 +3,6 @@ using SilkyNvg.Blending;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Veldrid;
 
 namespace SilkyNvg.Rendering.Veldrid
@@ -18,30 +17,17 @@ namespace SilkyNvg.Rendering.Veldrid
             ImagePattern    // Image fill (RGBA texture, UV from paintMat transform)
         }
 
-        // Vertex format: position (x,y) + texcoord (u,v) + color (rgba)
-        // IMPORTANT: Must use Vector2 and RgbaFloat types to match Veldrid's expected layout!
-        [StructLayout(LayoutKind.Sequential)]
-        private struct NvgVertex
-        {
-            public Vector2 Position;    // 8 bytes
-            public Vector2 TexCoord;    // 8 bytes
-            public RgbaFloat Color;     // 16 bytes
-
-            public NvgVertex(Vertex vertex, Colour color)
-            {
-                Position = new Vector2(vertex.X, vertex.Y);
-                TexCoord = new Vector2(vertex.U, vertex.V);
-                Color = new RgbaFloat(color.R, color.G, color.B, color.A);
-            }
-        }
+        // NvgVertex is now in Shaders/ShaderLayouts.cs (shared vertex format)
+        // GradientUniforms is now in Shaders/GradientShader.cs
+        // ImagePatternUniforms is now in Shaders/ImagePatternShader.cs
 
         private struct DrawCall
         {
             public int VertexOffset;
             public int VertexCount;
             public DrawCallType Type;
-            public int TextureId; // Only used when Type == Textured
-            public GradientUniforms GradientParams; // Only used when Type == Gradient
+            public int TextureId; // Only used when Type == Textured or ImagePattern
+            public ShaderLayouts.PaintUniforms PaintParams; // Used for Gradient and ImagePattern draw calls
             public bool HasScissor;
             public int ScissorX;
             public int ScissorY;
@@ -92,10 +78,10 @@ namespace SilkyNvg.Rendering.Veldrid
                 // Image pattern fill: transform world position to UV via paintMat
                 drawCall.Type = DrawCallType.ImagePattern;
                 drawCall.TextureId = paint.Image;
-                drawCall.GradientParams = ComputeGradientUniforms(paint);
+                drawCall.PaintParams = ComputePaintUniforms(paint);
             } else if (IsGradientPaint(paint)) {
                 drawCall.Type = DrawCallType.Gradient;
-                drawCall.GradientParams = ComputeGradientUniforms(paint);
+                drawCall.PaintParams = ComputePaintUniforms(paint);
             } else {
                 drawCall.Type = DrawCallType.SolidFill;
             }
@@ -128,11 +114,11 @@ namespace SilkyNvg.Rendering.Veldrid
         /// <summary>
         /// Computes gradient uniform data from a NVG Paint, matching the OpenGL backend's FragUniforms logic.
         /// </summary>
-        private static GradientUniforms ComputeGradientUniforms(Paint paint)
+        private static ShaderLayouts.PaintUniforms ComputePaintUniforms(Paint paint)
         {
             Matrix3x2.Invert(paint.Transform, out Matrix3x2 inversePaintTransform);
 
-            return new GradientUniforms
+            return new ShaderLayouts.PaintUniforms
             {
                 PaintMat = new Matrix4x4(inversePaintTransform),
                 InnerColor = new Vector4(
@@ -158,9 +144,9 @@ namespace SilkyNvg.Rendering.Veldrid
                 if (path.Fill.Count >= 3) {
                     var firstVertex = path.Fill[0];
                     for (int i = 1; i < path.Fill.Count - 1; i++) {
-                        _vertexBatch.Add(new NvgVertex(firstVertex, fillColor));
-                        _vertexBatch.Add(new NvgVertex(path.Fill[i], fillColor));
-                        _vertexBatch.Add(new NvgVertex(path.Fill[i + 1], fillColor));
+                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(firstVertex, fillColor));
+                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i], fillColor));
+                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i + 1], fillColor));
                     }
                 }
 
@@ -169,13 +155,13 @@ namespace SilkyNvg.Rendering.Veldrid
                 if (path.Stroke.Count >= 3) {
                     for (int i = 0; i < path.Stroke.Count - 2; i++) {
                         if (i % 2 == 0) {
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i], fillColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 1], fillColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 2], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
                         } else {
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 1], fillColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i], fillColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 2], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
                         }
                     }
                 }
@@ -201,13 +187,13 @@ namespace SilkyNvg.Rendering.Veldrid
                     // Convert triangle strip to triangle list
                     for (int i = 0; i < path.Stroke.Count - 2; i++) {
                         if (i % 2 == 0) {
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i], strokeColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 1], strokeColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 2], strokeColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], strokeColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], strokeColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], strokeColor));
                         } else {
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 1], strokeColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i], strokeColor));
-                            _vertexBatch.Add(new NvgVertex(path.Stroke[i + 2], strokeColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], strokeColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], strokeColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], strokeColor));
                         }
                     }
                 }
@@ -228,7 +214,7 @@ namespace SilkyNvg.Rendering.Veldrid
             int vertexOffset = _vertexBatch.Count;
 
             foreach (var vertex in vertices) {
-                _vertexBatch.Add(new NvgVertex(vertex, color));
+                _vertexBatch.Add(new ShaderLayouts.NvgVertex(vertex, color));
             }
 
             int vertexCount = _vertexBatch.Count - vertexOffset;

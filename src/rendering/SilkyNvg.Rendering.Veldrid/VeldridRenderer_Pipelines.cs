@@ -27,57 +27,23 @@ namespace SilkyNvg.Rendering.Veldrid
 
         private void CreateShaders()
         {
-            // Solid fill shaders (shapes without textures)
-            var solidVertexShaderDesc = new ShaderDescription(
-                ShaderStages.Vertex,
-                GetSolidFillVertexShaderBytes(),
-                "main");
+            var factory = _graphicsDevice.ResourceFactory;
 
-            var solidFragmentShaderDesc = new ShaderDescription(
-                ShaderStages.Fragment,
-                GetSolidFillFragmentShaderBytes(),
-                "main");
+            _solidFillShaders = factory.CreateFromSpirv(
+                new ShaderDescription(ShaderStages.Vertex, SolidFillShader.GetVertexShaderBytes(), "main"),
+                new ShaderDescription(ShaderStages.Fragment, SolidFillShader.GetFragmentShaderBytes(), "main"));
 
-            _solidFillShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(solidVertexShaderDesc, solidFragmentShaderDesc);
+            _texturedShaders = factory.CreateFromSpirv(
+                new ShaderDescription(ShaderStages.Vertex, TexturedShader.GetVertexShaderBytes(), "main"),
+                new ShaderDescription(ShaderStages.Fragment, TexturedShader.GetFragmentShaderBytes(), "main"));
 
-            // Textured shaders (font atlas text rendering)
-            var texturedVertexShaderDesc = new ShaderDescription(
-                ShaderStages.Vertex,
-                GetTexturedVertexShaderBytes(),
-                "main");
+            _gradientShaders = factory.CreateFromSpirv(
+                new ShaderDescription(ShaderStages.Vertex, GradientShader.GetVertexShaderBytes(), "main"),
+                new ShaderDescription(ShaderStages.Fragment, GradientShader.GetFragmentShaderBytes(), "main"));
 
-            var texturedFragmentShaderDesc = new ShaderDescription(
-                ShaderStages.Fragment,
-                GetTexturedFragmentShaderBytes(),
-                "main");
-
-            _texturedShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(texturedVertexShaderDesc, texturedFragmentShaderDesc);
-
-            // Gradient shaders (linear, radial, box gradients)
-            var gradientVertexShaderDesc = new ShaderDescription(
-                ShaderStages.Vertex,
-                GetGradientVertexShaderBytes(),
-                "main");
-
-            var gradientFragmentShaderDesc = new ShaderDescription(
-                ShaderStages.Fragment,
-                GetGradientFragmentShaderBytes(),
-                "main");
-
-            _gradientShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(gradientVertexShaderDesc, gradientFragmentShaderDesc);
-
-            // Image pattern shaders (RGBA texture fill with paintMat UV transform)
-            var imagePatternVertexShaderDesc = new ShaderDescription(
-                ShaderStages.Vertex,
-                GetImagePatternVertexShaderBytes(),
-                "main");
-
-            var imagePatternFragmentShaderDesc = new ShaderDescription(
-                ShaderStages.Fragment,
-                GetImagePatternFragmentShaderBytes(),
-                "main");
-
-            _imagePatternShaders = _graphicsDevice.ResourceFactory.CreateFromSpirv(imagePatternVertexShaderDesc, imagePatternFragmentShaderDesc);
+            _imagePatternShaders = factory.CreateFromSpirv(
+                new ShaderDescription(ShaderStages.Vertex, ImagePatternShader.GetVertexShaderBytes(), "main"),
+                new ShaderDescription(ShaderStages.Fragment, ImagePatternShader.GetFragmentShaderBytes(), "main"));
         }
 
         private void CreatePipeline()
@@ -85,11 +51,7 @@ namespace SilkyNvg.Rendering.Veldrid
             var factory = _graphicsDevice.ResourceFactory;
 
             // === SOLID FILL PIPELINE (shapes without textures) ===
-            // Vertex layout: Position, TexCoord (for AA coverage), Color
-            var solidFillVertexLayout = new VertexLayoutDescription(
-                new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
-                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
+            var sharedVertexLayout = ShaderLayouts.CreateVertexLayout();
 
             // Resource layout for view size uniform only
             _solidFillResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
@@ -107,7 +69,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _solidFillResourceLayout },
                 ShaderSet = new ShaderSetDescription(
-                    new[] { solidFillVertexLayout },
+                    new[] { sharedVertexLayout },
                     _solidFillShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
@@ -115,11 +77,6 @@ namespace SilkyNvg.Rendering.Veldrid
             _solidFillPipeline = factory.CreateGraphicsPipeline(solidFillPipelineDesc);
 
             // === TEXTURED PIPELINE (font atlas text rendering) ===
-            // Vertex layout: Position, TexCoord, Color - all with explicit offsets
-            var texturedVertexLayout = new VertexLayoutDescription(
-                new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
-                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
 
             // Resource layout: ViewSize uniform + font atlas texture + sampler
             _texturedResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
@@ -149,7 +106,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _texturedResourceLayout },
                 ShaderSet = new ShaderSetDescription(
-                    new[] { texturedVertexLayout },
+                    new[] { sharedVertexLayout },
                     _texturedShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
@@ -157,11 +114,6 @@ namespace SilkyNvg.Rendering.Veldrid
             _texturedPipeline = factory.CreateGraphicsPipeline(texturedPipelineDesc);
 
             // === GRADIENT PIPELINE (linear, radial, box gradients) ===
-            // Vertex layout: Position, TexCoord (unused), Color (unused) — same NvgVertex struct
-            var gradientVertexLayout = new VertexLayoutDescription(
-                new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
-                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
 
             // Resource layout: ViewSize uniform (vertex) + GradientParams uniform (fragment)
             _gradientResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
@@ -180,7 +132,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _gradientResourceLayout },
                 ShaderSet = new ShaderSetDescription(
-                    new[] { gradientVertexLayout },
+                    new[] { sharedVertexLayout },
                     _gradientShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
@@ -188,10 +140,6 @@ namespace SilkyNvg.Rendering.Veldrid
             _gradientPipeline = factory.CreateGraphicsPipeline(gradientPipelineDesc);
 
             // === IMAGE PATTERN PIPELINE (RGBA texture fill with paintMat UV transform) ===
-            var imagePatternVertexLayout = new VertexLayoutDescription(
-                new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
-                new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2, 8),
-                new VertexElementDescription("Color", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4, 16));
 
             // Resource layout: ViewSize (vertex) + ImagePatternParams (fragment) + Texture + Sampler
             _imagePatternResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
@@ -222,7 +170,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _imagePatternResourceLayout },
                 ShaderSet = new ShaderSetDescription(
-                    new[] { imagePatternVertexLayout },
+                    new[] { sharedVertexLayout },
                     _imagePatternShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
@@ -236,7 +184,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // Dynamic vertex buffer (will resize as needed)
             _vertexBuffer = factory.CreateBuffer(new BufferDescription(
-                4096 * (uint)Marshal.SizeOf<NvgVertex>(),
+                4096 * (uint)Marshal.SizeOf<ShaderLayouts.NvgVertex>(),
                 BufferUsage.VertexBuffer | BufferUsage.Dynamic));
 
             // View size uniform buffer
@@ -249,16 +197,16 @@ namespace SilkyNvg.Rendering.Veldrid
                 _solidFillResourceLayout,
                 _viewSizeUniformBuffer));
 
-            // Gradient uniform buffer (updated per draw call)
-            _gradientUniformBuffer = factory.CreateBuffer(new BufferDescription(
-                (uint)Marshal.SizeOf<GradientUniforms>(),
+            // Paint uniform buffer — shared by gradient and image pattern pipelines (updated per draw call)
+            _paintUniformBuffer = factory.CreateBuffer(new BufferDescription(
+                (uint)Marshal.SizeOf<ShaderLayouts.PaintUniforms>(),
                 BufferUsage.UniformBuffer | BufferUsage.Dynamic));
 
-            // Resource set for gradient pipeline (viewSize + gradient params)
+            // Resource set for gradient pipeline (viewSize + paint params)
             _gradientResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
                 _gradientResourceLayout,
                 _viewSizeUniformBuffer,
-                _gradientUniformBuffer));
+                _paintUniformBuffer));
 
             // Create the TextureRegistry now that we have the required Veldrid resources
             _textureRegistry = new TextureRegistry(

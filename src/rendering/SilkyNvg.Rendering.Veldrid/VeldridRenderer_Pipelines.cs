@@ -176,6 +176,80 @@ namespace SilkyNvg.Rendering.Veldrid
             };
 
             _imagePatternPipeline = factory.CreateGraphicsPipeline(imagePatternPipelineDesc);
+
+            // === STENCIL FILL PIPELINE (Pass 1: write winding count to stencil, no color output) ===
+            // Non-zero winding rule: front faces increment, back faces decrement.
+            // CullMode must be None so both face orientations contribute to the winding count.
+            var stencilFillPipelineDesc = new GraphicsPipelineDescription {
+                BlendState = new BlendStateDescription {
+                    AttachmentStates = new[] {
+                        new BlendAttachmentDescription { BlendEnabled = false, ColorWriteMask = ColorWriteMask.None }
+                    }
+                },
+                DepthStencilState = new DepthStencilStateDescription {
+                    DepthTestEnabled = false,
+                    DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.IncrementAndWrap, ComparisonKind.Always),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.DecrementAndWrap, ComparisonKind.Always),
+                    StencilReadMask = 0xFF,
+                    StencilWriteMask = 0xFF,
+                    StencilReference = 0
+                },
+                RasterizerState = new RasterizerStateDescription(
+                    cullMode: FaceCullMode.None,
+                    fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise,
+                    depthClipEnabled: false,
+                    scissorTestEnabled: true),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _solidFillResourceLayout },
+                ShaderSet = new ShaderSetDescription(
+                    new[] { sharedVertexLayout },
+                    _solidFillShaders),
+                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+            };
+
+            _stencilFillPipeline = factory.CreateGraphicsPipeline(stencilFillPipelineDesc);
+
+            // === STENCIL COVER PIPELINE (Pass 2: fill where stencil != 0, then zero stencil) ===
+            // Draws the bounds quad with the actual fill color. Only pixels where stencil != 0
+            // (inside the non-convex path) get colored. Stencil is zeroed on pass to clean up.
+            var stencilCoverSolidPipelineDesc = new GraphicsPipelineDescription {
+                BlendState = BlendStateDescription.SingleAlphaBlend,
+                DepthStencilState = new DepthStencilStateDescription {
+                    DepthTestEnabled = false,
+                    DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.Zero, StencilOperation.Zero,
+                        StencilOperation.Zero, ComparisonKind.NotEqual),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.Zero, StencilOperation.Zero,
+                        StencilOperation.Zero, ComparisonKind.NotEqual),
+                    StencilReadMask = 0xFF,
+                    StencilWriteMask = 0xFF,
+                    StencilReference = 0
+                },
+                RasterizerState = new RasterizerStateDescription(
+                    cullMode: FaceCullMode.None,
+                    fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise,
+                    depthClipEnabled: false,
+                    scissorTestEnabled: true),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _solidFillResourceLayout },
+                ShaderSet = new ShaderSetDescription(
+                    new[] { sharedVertexLayout },
+                    _solidFillShaders),
+                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+            };
+
+            _stencilCoverSolidPipeline = factory.CreateGraphicsPipeline(stencilCoverSolidPipelineDesc);
         }
 
         private void CreateBuffers()

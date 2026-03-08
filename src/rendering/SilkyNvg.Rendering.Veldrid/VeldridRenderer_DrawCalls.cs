@@ -14,7 +14,8 @@ namespace SilkyNvg.Rendering.Veldrid
             SolidFill,
             Textured,       // Font atlas text (R8_UNorm alpha, UV from vertices)
             Gradient,       // Linear/radial/box gradients (SDF in paint space)
-            ImagePattern    // Image fill (RGBA texture, UV from paintMat transform)
+            ImagePattern,   // Image fill (RGBA texture, UV from paintMat transform)
+            NonConvexFill   // Two-pass stencil fill for self-intersecting/concave paths
         }
 
         // NvgVertex is now in Shaders/ShaderLayouts.cs (shared vertex format)
@@ -34,6 +35,10 @@ namespace SilkyNvg.Rendering.Veldrid
             public uint ScissorWidth;
             public uint ScissorHeight;
             public BlendStateDescription BlendState;
+
+            // NonConvexFill sub-ranges (vertex data is: [stencil fill tris] [fringe tris] [cover quad])
+            public int StencilFillVertexCount;   // Fill triangles for stencil pass
+            public int CoverQuadVertexOffset;    // Bounds quad for cover pass (always 6 vertices)
         }
 
         /// <summary>
@@ -135,12 +140,31 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public void Fill(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, float fringe, RectangleF bounds, IReadOnlyList<Path> paths)
         {
+            // Use convex fast path for single convex paths (rects, circles, rounded rects)
+            // Use stencil fill for multi-path or non-convex paths (pentagrams, concave shapes)
+            // NOTE: Path.Convex doesn't detect self-intersection, but single-path self-intersecting
+            // shapes (like pentagrams) are still classified as convex by NVG. For now, this means
+            // pentagrams will still have triangle fan artifacts. A future fix could detect
+            // self-intersection or always use stencil for paths with > N vertices.
+            bool isConvexSinglePath = (paths.Count == 1) && paths[0].Convex;
+
+            if (isConvexSinglePath) {
+                FillConvex(paint, scissor, paths);
+            } else {
+                FillNonConvex(paint, scissor, bounds, paths);
+            }
+        }
+
+        /// <summary>
+        /// Convex fill: simple triangle fan + fringe. No stencil needed.
+        /// </summary>
+        private void FillConvex(Paint paint, Scissor scissor, IReadOnlyList<Path> paths)
+        {
             var fillColor = paint.InnerColour;
             int vertexOffset = _vertexBatch.Count;
 
-            foreach (var path in paths)
-            {
-                // Add fill vertices as triangle fan → triangle list
+            foreach (var path in paths) {
+                // Fill vertices as triangle fan → triangle list
                 if (path.Fill.Count >= 3) {
                     var firstVertex = path.Fill[0];
                     for (int i = 1; i < path.Fill.Count - 1; i++) {
@@ -150,8 +174,7 @@ namespace SilkyNvg.Rendering.Veldrid
                     }
                 }
 
-                // Add stroke (fringe) vertices for edge anti-aliasing
-                // These have tcoord.y fading to 0 at the outer edge for smooth AA
+                // Fringe vertices for edge anti-aliasing
                 if (path.Stroke.Count >= 3) {
                     for (int i = 0; i < path.Stroke.Count - 2; i++) {
                         if (i % 2 == 0) {
@@ -168,9 +191,81 @@ namespace SilkyNvg.Rendering.Veldrid
             }
 
             int vertexCount = _vertexBatch.Count - vertexOffset;
-
             if (vertexCount > 0) {
                 _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint, scissor));
+            }
+        }
+
+        /// <summary>
+        /// Non-convex fill: two-pass stencil-then-cover algorithm.
+        /// Vertex layout: [stencil fill triangles] [fringe triangles] [cover quad (6 verts)]
+        /// </summary>
+        private void FillNonConvex(Paint paint, Scissor scissor, RectangleF bounds, IReadOnlyList<Path> paths)
+        {
+            var fillColor = paint.InnerColour;
+            int vertexOffset = _vertexBatch.Count;
+
+            // Part 1: Fill triangles (for stencil pass — winding count)
+            int stencilFillStartOffset = _vertexBatch.Count;
+            foreach (var path in paths) {
+                if (path.Fill.Count >= 3) {
+                    var firstVertex = path.Fill[0];
+                    for (int i = 1; i < path.Fill.Count - 1; i++) {
+                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(firstVertex, fillColor));
+                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i], fillColor));
+                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i + 1], fillColor));
+                    }
+                }
+            }
+            int stencilFillVertexCount = _vertexBatch.Count - stencilFillStartOffset;
+
+            // Part 2: Fringe triangles (for AA pass — drawn where stencil == 0)
+            foreach (var path in paths) {
+                if (path.Stroke.Count >= 3) {
+                    for (int i = 0; i < path.Stroke.Count - 2; i++) {
+                        if (i % 2 == 0) {
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
+                        } else {
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
+                        }
+                    }
+                }
+            }
+
+            // Part 3: Cover quad (bounds rectangle as 2 triangles, for cover pass)
+            int coverQuadVertexOffset = _vertexBatch.Count;
+            var coverColor = fillColor; // Cover quad uses the fill color
+            // TexCoord = (0.5, 1.0) for full opacity (same as fill body vertices)
+            var coverVertex = new Vertex(0, 0, 0.5f, 1.0f);
+
+            // Triangle 1: top-left, top-right, bottom-right
+            coverVertex = new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f);
+            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            coverVertex = new Vertex(bounds.Right, bounds.Top, 0.5f, 1.0f);
+            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            coverVertex = new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f);
+            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+
+            // Triangle 2: top-left, bottom-right, bottom-left
+            coverVertex = new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f);
+            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            coverVertex = new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f);
+            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            coverVertex = new Vertex(bounds.Left, bounds.Bottom, 0.5f, 1.0f);
+            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+
+            int totalVertexCount = _vertexBatch.Count - vertexOffset;
+
+            if (totalVertexCount > 0) {
+                var drawCall = CreateDrawCall(vertexOffset, totalVertexCount, paint, scissor);
+                drawCall.Type = DrawCallType.NonConvexFill;
+                drawCall.StencilFillVertexCount = stencilFillVertexCount;
+                drawCall.CoverQuadVertexOffset = coverQuadVertexOffset;
+                _drawCalls.Add(drawCall);
             }
         }
 

@@ -138,11 +138,13 @@ namespace SilkyNvg.Rendering.Veldrid
                         commandList.SetGraphicsResourceSet(0, imagePatternResourceSet);
                         lastBoundTextureId = drawCall.TextureId;
                         break;
+                    case DrawCallType.NonConvexFill:
+                        // Handled below with custom multi-pass draw
+                        break;
                 }
 
-                // Apply scissor rect (scale from NVG coordinates to framebuffer pixels)
-                if (drawCall.HasScissor)
-                {
+                // Apply scissor rect BEFORE drawing (scale from NVG coordinates to framebuffer pixels)
+                if (drawCall.HasScissor) {
                     uint scaledScissorX = (uint)Math.Max(0, (int)(drawCall.ScissorX * nvgToFramebufferScaleX));
                     uint scaledScissorY = (uint)Math.Max(0, (int)(drawCall.ScissorY * nvgToFramebufferScaleY));
                     uint scaledScissorWidth = (uint)(drawCall.ScissorWidth * nvgToFramebufferScaleX);
@@ -151,14 +153,34 @@ namespace SilkyNvg.Rendering.Veldrid
                         scaledScissorX, scaledScissorY,
                         scaledScissorWidth, scaledScissorHeight);
                     lastScissorWasFullViewport = false;
-                }
-                else if (!lastScissorWasFullViewport)
-                {
+                } else if (!lastScissorWasFullViewport) {
                     commandList.SetScissorRect(0, 0, 0, fullFramebufferWidth, fullFramebufferHeight);
                     lastScissorWasFullViewport = true;
                 }
 
-                commandList.Draw((uint)drawCall.VertexCount, 1, (uint)drawCall.VertexOffset, 0);
+                // Execute draw (NonConvexFill has its own multi-pass draw sequence)
+                if (drawCall.Type == DrawCallType.NonConvexFill) {
+                    // === TWO-PASS STENCIL-THEN-COVER for non-convex paths ===
+
+                    // Pass 1: Write winding count to stencil buffer (no color output)
+                    // Front faces increment, back faces decrement (non-zero winding rule)
+                    commandList.SetPipeline(_stencilFillPipeline);
+                    commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+                    commandList.Draw(
+                        (uint)drawCall.StencilFillVertexCount, 1,
+                        (uint)drawCall.VertexOffset, 0);
+
+                    // Pass 2: Draw cover quad where stencil != 0, zeroing stencil as we go
+                    commandList.SetPipeline(_stencilCoverSolidPipeline);
+                    commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+                    commandList.Draw(6, 1, (uint)drawCall.CoverQuadVertexOffset, 0);
+
+                    // Reset pipeline tracking (stencil pipelines are transient)
+                    lastPipelineType = (DrawCallType)255;
+                    lastBoundTextureId = -1;
+                } else {
+                    commandList.Draw((uint)drawCall.VertexCount, 1, (uint)drawCall.VertexOffset, 0);
+                }
             }
 
             Cancel();

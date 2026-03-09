@@ -227,6 +227,12 @@ namespace SilkyNvg.Rendering.Veldrid
             }
             _imagePatternResourceSetCache.Clear();
 
+            // Dispose stencil pipelines
+            _stencilFillPipeline?.Dispose();
+            _stencilCoverSolidPipeline?.Dispose();
+            _stencilCoverGradientPipeline?.Dispose();
+            _stencilCoverImagePatternPipeline?.Dispose();
+
             // Dispose shared resources
             _vertexBuffer?.Dispose();
             _viewSizeUniformBuffer?.Dispose();

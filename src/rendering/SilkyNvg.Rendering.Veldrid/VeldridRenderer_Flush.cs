@@ -23,7 +23,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 return;
             }
 
-            if (_vertexBatch.Count == 0)
+            if (_vertexBatchCount == 0)
             {
                 Cancel();
                 return;
@@ -38,7 +38,7 @@ namespace SilkyNvg.Rendering.Veldrid
             _graphicsDevice.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
 
             // Resize vertex buffer if needed
-            uint requiredVertexBufferSize = (uint)(_vertexBatch.Count * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
+            uint requiredVertexBufferSize = (uint)(_vertexBatchCount * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
             if (_vertexBuffer!.SizeInBytes < requiredVertexBufferSize)
             {
                 _vertexBuffer.Dispose();
@@ -47,8 +47,8 @@ namespace SilkyNvg.Rendering.Veldrid
                     BufferUsage.VertexBuffer | BufferUsage.Dynamic));
             }
 
-            // Upload vertices
-            _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, _vertexBatch.ToArray());
+            // Upload vertices (zero-alloc: pass span slice directly, no ToArray() allocation)
+            _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, _vertexBatchArray.AsSpan(0, _vertexBatchCount));
 
             // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);

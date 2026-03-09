@@ -92,8 +92,9 @@ namespace SilkyNvg.Rendering.Veldrid
         // Texture management (font atlas, images, ResourceSet caching)
         private TextureRegistry _textureRegistry = null!; // Initialized in CreateBuffers()
 
-        // Batching
-        private readonly List<ShaderLayouts.NvgVertex> _vertexBatch = new(4096);
+        // Batching - zero-alloc vertex buffer (same strategy as OpenGL backend)
+        private ShaderLayouts.NvgVertex[] _vertexBatchArray = new ShaderLayouts.NvgVertex[4096];
+        private int _vertexBatchCount = 0;
         private readonly List<DrawCall> _drawCalls = new(64);
         private SizeF _viewportSize;
         private bool _isInitialized;
@@ -149,7 +150,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public void Cancel()
         {
-            _vertexBatch.Clear();
+            _vertexBatchCount = 0;
             _drawCalls.Clear();
         }
 

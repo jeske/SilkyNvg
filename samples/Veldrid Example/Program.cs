@@ -41,7 +41,7 @@ public static class Program
         // Create Veldrid GraphicsDevice from the Silk.NET window's native handle
         GraphicsDeviceOptions graphicsDeviceOptions = new GraphicsDeviceOptions {
             PreferDepthRangeZeroToOne = true,
-            SyncToVerticalBlank = true,
+            SyncToVerticalBlank = false,  // Disable vsync for performance comparison
             // 8-bit stencil required for non-convex path fill (stencil-then-cover)
             SwapchainDepthFormat = PixelFormat.D24_UNorm_S8_UInt
         };
@@ -200,7 +200,7 @@ public static class Program
         WindowOptions windowOptions = WindowOptions.Default;
         windowOptions.Size = new Vector2D<int>(WINDOW_WIDTH, WINDOW_HEIGHT);
         windowOptions.Title = $"SilkyNvg Veldrid Backend Example ({selectedGraphicsBackend})";
-        windowOptions.VSync = true;
+        windowOptions.VSync = false;  // Disable vsync for performance comparison
         windowOptions.PreferredDepthBufferBits = 24;
         windowOptions.PreferredStencilBufferBits = 8;
         // Don't let Silk.NET create an OpenGL context — we'll use Veldrid

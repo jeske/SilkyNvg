@@ -9,6 +9,28 @@ namespace SilkyNvg.Rendering.Veldrid
 {
     public sealed partial class VeldridRenderer
     {
+        /// <summary>
+        /// Ensures the vertex batch array has capacity for n additional vertices.
+        /// Uses 1.5x growth strategy (same as OpenGL backend).
+        /// </summary>
+        private void EnsureVertexCapacity(int additionalVertexCount)
+        {
+            int requiredCapacity = _vertexBatchCount + additionalVertexCount;
+            if (requiredCapacity > _vertexBatchArray.Length) {
+                int newCapacity = Math.Max(requiredCapacity, 4096) + _vertexBatchArray.Length / 2;
+                Array.Resize(ref _vertexBatchArray, newCapacity);
+            }
+        }
+
+        /// <summary>
+        /// Adds a single vertex to the batch (with automatic array growth).
+        /// </summary>
+        private void AddVertex(ShaderLayouts.NvgVertex vertex)
+        {
+            EnsureVertexCapacity(1);
+            _vertexBatchArray[_vertexBatchCount++] = vertex;
+        }
+
         private enum DrawCallType : byte
         {
             SolidFill,
@@ -162,16 +184,16 @@ namespace SilkyNvg.Rendering.Veldrid
         private void FillConvex(Paint paint, Scissor scissor, IReadOnlyList<Path> paths)
         {
             var fillColor = paint.InnerColour;
-            int vertexOffset = _vertexBatch.Count;
+            int vertexOffset = _vertexBatchCount;
 
             foreach (var path in paths) {
                 // Fill vertices as triangle fan → triangle list
                 if (path.Fill.Count >= 3) {
                     var firstVertex = path.Fill[0];
                     for (int i = 1; i < path.Fill.Count - 1; i++) {
-                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(firstVertex, fillColor));
-                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i], fillColor));
-                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i + 1], fillColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(firstVertex, fillColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(path.Fill[i], fillColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(path.Fill[i + 1], fillColor));
                     }
                 }
 
@@ -179,19 +201,19 @@ namespace SilkyNvg.Rendering.Veldrid
                 if (path.Stroke.Count >= 3) {
                     for (int i = 0; i < path.Stroke.Count - 2; i++) {
                         if (i % 2 == 0) {
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
                         } else {
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
                         }
                     }
                 }
             }
 
-            int vertexCount = _vertexBatch.Count - vertexOffset;
+            int vertexCount = _vertexBatchCount - vertexOffset;
             if (vertexCount > 0) {
                 _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint, scissor));
             }
@@ -204,62 +226,62 @@ namespace SilkyNvg.Rendering.Veldrid
         private void FillNonConvex(Paint paint, Scissor scissor, RectangleF bounds, IReadOnlyList<Path> paths)
         {
             var fillColor = paint.InnerColour;
-            int vertexOffset = _vertexBatch.Count;
+            int vertexOffset = _vertexBatchCount;
 
             // Part 1: Fill triangles (for stencil pass — winding count)
-            int stencilFillStartOffset = _vertexBatch.Count;
+            int stencilFillStartOffset = _vertexBatchCount;
             foreach (var path in paths) {
                 if (path.Fill.Count >= 3) {
                     var firstVertex = path.Fill[0];
                     for (int i = 1; i < path.Fill.Count - 1; i++) {
-                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(firstVertex, fillColor));
-                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i], fillColor));
-                        _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Fill[i + 1], fillColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(firstVertex, fillColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(path.Fill[i], fillColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(path.Fill[i + 1], fillColor));
                     }
                 }
             }
-            int stencilFillVertexCount = _vertexBatch.Count - stencilFillStartOffset;
+            int stencilFillVertexCount = _vertexBatchCount - stencilFillStartOffset;
 
             // Part 2: Fringe triangles (for AA pass — drawn where stencil == 0)
             foreach (var path in paths) {
                 if (path.Stroke.Count >= 3) {
                     for (int i = 0; i < path.Stroke.Count - 2; i++) {
                         if (i % 2 == 0) {
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
                         } else {
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i], fillColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], fillColor));
                         }
                     }
                 }
             }
 
             // Part 3: Cover quad (bounds rectangle as 2 triangles, for cover pass)
-            int coverQuadVertexOffset = _vertexBatch.Count;
+            int coverQuadVertexOffset = _vertexBatchCount;
             var coverColor = fillColor; // Cover quad uses the fill color
             // TexCoord = (0.5, 1.0) for full opacity (same as fill body vertices)
             var coverVertex = new Vertex(0, 0, 0.5f, 1.0f);
 
             // Triangle 1: top-left, top-right, bottom-right
             coverVertex = new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f);
-            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
             coverVertex = new Vertex(bounds.Right, bounds.Top, 0.5f, 1.0f);
-            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
             coverVertex = new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f);
-            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
 
             // Triangle 2: top-left, bottom-right, bottom-left
             coverVertex = new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f);
-            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
             coverVertex = new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f);
-            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
             coverVertex = new Vertex(bounds.Left, bounds.Bottom, 0.5f, 1.0f);
-            _vertexBatch.Add(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, coverColor));
 
-            int totalVertexCount = _vertexBatch.Count - vertexOffset;
+            int totalVertexCount = _vertexBatchCount - vertexOffset;
 
             if (totalVertexCount > 0) {
                 var drawCall = CreateDrawCall(vertexOffset, totalVertexCount, paint, scissor);
@@ -276,7 +298,7 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             var strokeColor = paint.InnerColour;
 
-            int vertexOffset = _vertexBatch.Count;
+            int vertexOffset = _vertexBatchCount;
 
             foreach (var path in paths)
             {
@@ -285,19 +307,19 @@ namespace SilkyNvg.Rendering.Veldrid
                     // Convert triangle strip to triangle list
                     for (int i = 0; i < path.Stroke.Count - 2; i++) {
                         if (i % 2 == 0) {
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], strokeColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], strokeColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], strokeColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i], strokeColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], strokeColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], strokeColor));
                         } else {
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], strokeColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i], strokeColor));
-                            _vertexBatch.Add(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], strokeColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 1], strokeColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i], strokeColor));
+                            AddVertex(new ShaderLayouts.NvgVertex(path.Stroke[i + 2], strokeColor));
                         }
                     }
                 }
             }
 
-            int vertexCount = _vertexBatch.Count - vertexOffset;
+            int vertexCount = _vertexBatchCount - vertexOffset;
             if (vertexCount > 0) {
                 _drawCalls.Add(CreateDrawCall(vertexOffset, vertexCount, paint, scissor));
             }
@@ -309,13 +331,13 @@ namespace SilkyNvg.Rendering.Veldrid
             // Vertices already have proper UV coordinates from FontStash.
             // Force DrawCallType.Textured (font atlas pipeline) — NOT ImagePattern.
             var color = paint.InnerColour;
-            int vertexOffset = _vertexBatch.Count;
+            int vertexOffset = _vertexBatchCount;
 
             foreach (var vertex in vertices) {
-                _vertexBatch.Add(new ShaderLayouts.NvgVertex(vertex, color));
+                AddVertex(new ShaderLayouts.NvgVertex(vertex, color));
             }
 
-            int vertexCount = _vertexBatch.Count - vertexOffset;
+            int vertexCount = _vertexBatchCount - vertexOffset;
             if (vertexCount > 0) {
                 var drawCall = CreateDrawCall(vertexOffset, vertexCount, paint, scissor);
                 // Override: text always uses the font atlas textured pipeline

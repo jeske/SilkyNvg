@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net9.0-android</TargetFrameworks>
+    <TargetFrameworks>net9.0;net10.0-android</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -38,6 +38,9 @@
     <None Include="Shaders\Source\**" />
     <!-- Disable SDK auto-discovery for Shaders/Compiled/ to avoid duplicates -->
     <Compile Remove="Shaders\Compiled\**" />
+    <!-- Exclude CompileShaders build outputs from Android packaging -->
+    <AndroidNativeLibrary Remove="Scripts\**" />
+    <Content Remove="Scripts\**" />
   </ItemGroup>
 
   <!-- Explicitly include generated shader files (needed for first-time builds before files exist) -->
@@ -49,11 +52,14 @@
   </ItemGroup>
 
   <!-- Run shader compiler before build to generate .generated.cs files
-       Uses Exec instead of ProjectReference to avoid cross-TFM dependency issues -->
+       Uses Exec instead of ProjectReference to avoid cross TFM dependency issues
+       TEMPORARILY COMMENTED OUT: Cross TFM issues in Release mode -->
+  <!--
   <Target Name="CompileShadersBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="Running shader compiler to generate precompiled shaders..." Importance="high" />
-    <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)Scripts\CompileShaders.csproj&quot;"
+    <Exec Command="dotnet run - -project &quot;$(MSBuildThisFileDirectory)Scripts\CompileShaders.csproj&quot; - -framework net9.0"
           WorkingDirectory="$(MSBuildThisFileDirectory)" />
   </Target>
+  -->
 
 </Project>

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0-android</TargetFramework>
+    <TargetFramework>net10.0-android</TargetFramework>
     <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <OutputType>Exe</OutputType>
     <RootNamespace>Veldrid_Android_Example</RootNamespace>
@@ -10,13 +10,25 @@
     <ApplicationId>com.arcane.veldrid.android.example</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <!-- Performance: AOT compilation for faster execution -->
-    <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
-    <!-- Explicitly set Android runtime identifiers (prevents win-x64 from being inferred) -->
+    <!-- Performance: AOT compilation disabled due to .NET 10 Preview bug with multi-targeted dependencies
+         (XAPRAS7004: ABI metadata null/empty error in ProcessAssemblies task)
+         Release mode still provides JIT optimizations vs Debug -->
+    <RunAOTCompilation>false</RunAOTCompilation>
     <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+    <!-- Force Mono runtime (CoreCLR on Android is experimental and crashes with Vulkan interop) -->
+    <UseMonoRuntime>true</UseMonoRuntime>
   </PropertyGroup>
 
+  <!-- Stop win/linux/osx native libs from leaking into Android build
+       (ppy.Veldrid ships desktop native libs that confuse ProcessAssemblies ABI detection) -->
   <ItemGroup>
+    <None Remove="**\runtimes\win-*\**" />
+    <None Remove="**\runtimes\linux-*\**" />
+    <None Remove="**\runtimes\osx*\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SilkyNvg\SilkyNvg.csproj" />
     <ProjectReference Include="..\..\src\rendering\SilkyNvg.Rendering.Veldrid\SilkyNvg.Rendering.Veldrid.csproj" />
     <ProjectReference Include="..\NvgExample\NvgExample.csproj" />
   </ItemGroup>

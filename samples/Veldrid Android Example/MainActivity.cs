@@ -18,7 +18,7 @@ namespace Veldrid_Android_Example;
     Name = "com.arcane.veldrid.android.example.MainActivity",
     Label = "SilkyNvg Veldrid",
     MainLauncher = true,
-    ScreenOrientation = ScreenOrientation.Portrait,
+    ScreenOrientation = ScreenOrientation.Landscape,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden,
     Theme = "@android:style/Theme.NoTitleBar.Fullscreen")]
 public class MainActivity : Activity, ISurfaceHolderCallback

@@ -196,14 +196,31 @@ public class VeldridAndroidRenderer
             float currentTouchX = getTouchMouseX();
             float currentTouchY = getTouchMouseY();
 
-            // Use surface pixel dimensions as the NVG logical size
-            float nvgFrameWidth = surfacePixelWidth;
-            float nvgFrameHeight = surfacePixelHeight;
+            // Use desktop example dimensions (1000x600) for consistent layout
+            const float DESKTOP_DEMO_WIDTH = 1000f;
+            const float DESKTOP_DEMO_HEIGHT = 600f;
+            float nvgFrameWidth = DESKTOP_DEMO_WIDTH;
+            float nvgFrameHeight = DESKTOP_DEMO_HEIGHT;
+
+            // Calculate viewport to center the 1000x600 content without stretching
+            float scaleX = surfacePixelWidth / DESKTOP_DEMO_WIDTH;
+            float scaleY = surfacePixelHeight / DESKTOP_DEMO_HEIGHT;
+            float uniformScale = Math.Min(scaleX, scaleY);
+            
+            uint scaledWidth = (uint)(DESKTOP_DEMO_WIDTH * uniformScale);
+            uint scaledHeight = (uint)(DESKTOP_DEMO_HEIGHT * uniformScale);
+            uint viewportX = (surfacePixelWidth - scaledWidth) / 2;
+            uint viewportY = (surfacePixelHeight - scaledHeight) / 2;
 
             // Begin GPU commands
             renderCommandList.Begin();
             renderCommandList.SetFramebuffer(vulkanGraphicsDevice.SwapchainFramebuffer);
-            renderCommandList.ClearColorTarget(0, new RgbaFloat(0.3f, 0.3f, 0.32f, 1.0f));
+            renderCommandList.ClearColorTarget(0, new RgbaFloat(0.0f, 0.0f, 0.0f, 1.0f)); // Black letterbox bars
+            
+            // Set viewport to center the content
+            renderCommandList.SetViewport(0, new Viewport(viewportX, viewportY, scaledWidth, scaledHeight, 0f, 1f));
+            renderCommandList.SetScissorRect(0, viewportX, viewportY, scaledWidth, scaledHeight);
+            
             renderCommandList.ClearDepthStencil(0f, 0);
 
             // NVG frame — fully qualify SizeF to avoid ambiguity with Android.Util.SizeF

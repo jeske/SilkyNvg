@@ -21,6 +21,7 @@ namespace OpenGL_Example
         private static GL gl;
         private static Nvg nvg;
 
+        private static bool testPentagramOnly = false; // Toggle: true = pentagram test, false = full demo
         private static bool blowup = false;
         private static bool screenshot = false;
         private static bool premult = false;
@@ -106,20 +107,14 @@ namespace OpenGL_Example
 
             nvg.BeginFrame(winSize, pxRatio);
 
-            nvg.BeginPath();
-            nvg.MoveTo(250f, 75f);
-            nvg.LineTo(323f, 301f);
-            nvg.LineTo(131f, 161f);
-            nvg.LineTo(369f, 161f);
-            nvg.LineTo(177f, 301f);
-            nvg.ClosePath();
-            nvg.FillColour(Colour.Red);
-            nvg.Fill();
-            
-            /*demo.Render(mx, my, winSize.X, winSize.Y, (float)t, blowup);
+            if (testPentagramOnly) {
+                RenderPentagramTest(nvg);
+            } else {
+                demo.Render(mx, my, winSize.X, winSize.Y, (float)t, blowup);
 
-            frameGraph.Render(5.0f, 5.0f, nvg);
-            cpuGraph.Render(5.0f + 200.0f + 5.0f, 5.0f, nvg);*/
+                frameGraph.Render(5.0f, 5.0f, nvg);
+                cpuGraph.Render(5.0f + 200.0f + 5.0f, 5.0f, nvg);
+            }
 
             nvg.EndFrame();
 
@@ -272,6 +267,38 @@ namespace OpenGL_Example
                 i++;
                 j--;
             }
+        }
+
+        private static void RenderPentagramTest(Nvg nvgContext)
+        {
+            float pentagramCenterX = 250, pentagramCenterY = 180;
+            float pentagramOuterRadius = 100;
+            float pentagramInnerRadius = pentagramOuterRadius * 0.381966f;
+            float pentagramStartAngle = -MathF.PI / 2f;
+
+            var pentagramOuterPoints = new Vector2[5];
+            var pentagramInnerPoints = new Vector2[5];
+            for (int i = 0; i < 5; i++) {
+                float outerAngle = pentagramStartAngle + i * (2f * MathF.PI / 5f);
+                pentagramOuterPoints[i] = new Vector2(
+                    pentagramCenterX + pentagramOuterRadius * MathF.Cos(outerAngle),
+                    pentagramCenterY + pentagramOuterRadius * MathF.Sin(outerAngle));
+
+                float innerAngle = outerAngle + MathF.PI / 5f;
+                pentagramInnerPoints[i] = new Vector2(
+                    pentagramCenterX + pentagramInnerRadius * MathF.Cos(innerAngle),
+                    pentagramCenterY + pentagramInnerRadius * MathF.Sin(innerAngle));
+            }
+
+            nvgContext.BeginPath();
+            nvgContext.MoveTo(pentagramOuterPoints[0].X, pentagramOuterPoints[0].Y);
+            for (int i = 0; i < 5; i++) {
+                nvgContext.LineTo(pentagramInnerPoints[i].X, pentagramInnerPoints[i].Y);
+                nvgContext.LineTo(pentagramOuterPoints[(i + 1) % 5].X, pentagramOuterPoints[(i + 1) % 5].Y);
+            }
+            nvgContext.ClosePath();
+            nvgContext.FillColour(Colour.Red);
+            nvgContext.Fill();
         }
 
         private static void SaveScreenShot(int w, int h, bool premult, string name)

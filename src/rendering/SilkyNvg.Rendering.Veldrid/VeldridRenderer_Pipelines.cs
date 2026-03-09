@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Veldrid;
-using Veldrid.SPIRV;
 
 namespace SilkyNvg.Rendering.Veldrid
 {
@@ -29,7 +28,8 @@ namespace SilkyNvg.Rendering.Veldrid
         /// Stencil cover depth-stencil state: draw where stencil != 0, zero stencil on pass.
         /// Shared by all stencil cover pipeline variants (solid, gradient, image pattern).
         /// </summary>
-        private static readonly DepthStencilStateDescription StencilCoverDepthStencilState = new DepthStencilStateDescription {
+        private static readonly DepthStencilStateDescription StencilCoverDepthStencilState = new DepthStencilStateDescription
+        {
             DepthTestEnabled = false,
             DepthWriteEnabled = false,
             StencilTestEnabled = true,
@@ -48,21 +48,11 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             var factory = _graphicsDevice.ResourceFactory;
 
-            _vertexColorShaders = factory.CreateFromSpirv(
-                new ShaderDescription(ShaderStages.Vertex, SolidFillShader.GetVertexShaderBytes(), "main"),
-                new ShaderDescription(ShaderStages.Fragment, SolidFillShader.GetFragmentShaderBytes(), "main"));
-
-            _texturedShaders = factory.CreateFromSpirv(
-                new ShaderDescription(ShaderStages.Vertex, TexturedShader.GetVertexShaderBytes(), "main"),
-                new ShaderDescription(ShaderStages.Fragment, TexturedShader.GetFragmentShaderBytes(), "main"));
-
-            _gradientShaders = factory.CreateFromSpirv(
-                new ShaderDescription(ShaderStages.Vertex, GradientShader.GetVertexShaderBytes(), "main"),
-                new ShaderDescription(ShaderStages.Fragment, GradientShader.GetFragmentShaderBytes(), "main"));
-
-            _imagePatternShaders = factory.CreateFromSpirv(
-                new ShaderDescription(ShaderStages.Vertex, ImagePatternShader.GetVertexShaderBytes(), "main"),
-                new ShaderDescription(ShaderStages.Fragment, ImagePatternShader.GetFragmentShaderBytes(), "main"));
+            // Use precompiled shaders (no runtime compilation needed)
+            _vertexColorShaders = SolidFillShaders.CreateShaders(factory);
+            _texturedShaders = TexturedShaders.CreateShaders(factory);
+            _gradientShaders = GradientShaders.CreateShaders(factory);
+            _imagePatternShaders = ImagePatternShaders.CreateShaders(factory);
         }
 
         private void CreatePipeline()
@@ -76,7 +66,8 @@ namespace SilkyNvg.Rendering.Veldrid
             _viewSizeOnlyResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
                 new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
-            var solidFillPipelineDesc = new GraphicsPipelineDescription {
+            var solidFillPipelineDesc = new GraphicsPipelineDescription
+            {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
@@ -104,7 +95,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 new ResourceLayoutElementDescription("FontAtlasSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
 
             // Create sampler for font atlas (linear filtering for smooth text)
-            _fontAtlasSampler = factory.CreateSampler(new SamplerDescription {
+            _fontAtlasSampler = factory.CreateSampler(new SamplerDescription
+            {
                 AddressModeU = SamplerAddressMode.Clamp,
                 AddressModeV = SamplerAddressMode.Clamp,
                 AddressModeW = SamplerAddressMode.Clamp,
@@ -113,7 +105,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 MaximumLod = 0
             });
 
-            var texturedPipelineDesc = new GraphicsPipelineDescription {
+            var texturedPipelineDesc = new GraphicsPipelineDescription
+            {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
@@ -139,7 +132,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex),
                 new ResourceLayoutElementDescription("GradientParams", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
 
-            var gradientPipelineDesc = new GraphicsPipelineDescription {
+            var gradientPipelineDesc = new GraphicsPipelineDescription
+            {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
@@ -168,7 +162,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 new ResourceLayoutElementDescription("PatternSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
 
             // Sampler for image patterns (linear filtering, clamp to edge)
-            _imagePatternSampler = factory.CreateSampler(new SamplerDescription {
+            _imagePatternSampler = factory.CreateSampler(new SamplerDescription
+            {
                 AddressModeU = SamplerAddressMode.Clamp,
                 AddressModeV = SamplerAddressMode.Clamp,
                 AddressModeW = SamplerAddressMode.Clamp,
@@ -177,7 +172,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 MaximumLod = 0
             });
 
-            var imagePatternPipelineDesc = new GraphicsPipelineDescription {
+            var imagePatternPipelineDesc = new GraphicsPipelineDescription
+            {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
@@ -201,13 +197,16 @@ namespace SilkyNvg.Rendering.Veldrid
             // CullMode must be None so both face orientations contribute to the winding count.
             // In concave areas where triangles overlap with opposite winding, increments and
             // decrements cancel to 0, so the cover quad won't draw there.
-            var stencilFillPipelineDesc = new GraphicsPipelineDescription {
-                BlendState = new BlendStateDescription {
+            var stencilFillPipelineDesc = new GraphicsPipelineDescription
+            {
+                BlendState = new BlendStateDescription
+                {
                     AttachmentStates = new[] {
                         new BlendAttachmentDescription { BlendEnabled = false, ColorWriteMask = ColorWriteMask.None }
                     }
                 },
-                DepthStencilState = new DepthStencilStateDescription {
+                DepthStencilState = new DepthStencilStateDescription
+                {
                     DepthTestEnabled = false,
                     DepthWriteEnabled = false,
                     StencilTestEnabled = true,
@@ -251,7 +250,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 scissorTestEnabled: true);
 
             // Solid cover (vertex color only)
-            _stencilCoverSolidPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
+            _stencilCoverSolidPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
                 RasterizerState = stencilCoverRasterizer,
@@ -262,7 +262,8 @@ namespace SilkyNvg.Rendering.Veldrid
             });
 
             // Gradient cover (gradient shader + stencil test)
-            _stencilCoverGradientPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
+            _stencilCoverGradientPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
                 RasterizerState = stencilCoverRasterizer,
@@ -273,7 +274,8 @@ namespace SilkyNvg.Rendering.Veldrid
             });
 
             // Image pattern cover (image pattern shader + stencil test)
-            _stencilCoverImagePatternPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
+            _stencilCoverImagePatternPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
                 RasterizerState = stencilCoverRasterizer,

@@ -78,7 +78,6 @@ namespace SilkyNvg.Rendering.Veldrid
                 IsAlphaOnly = isAlphaOnly
             };
 
-            Console.WriteLine($"[TextureRegistry] CreateTexture: id={textureId}, size={size.Width}x{size.Height}, alpha={isAlphaOnly}");
             return textureId;
         }
 
@@ -98,7 +97,6 @@ namespace SilkyNvg.Rendering.Veldrid
             managedTexture.GpuTexture.Dispose();
             _textures.Remove(textureId);
 
-            Console.WriteLine($"[TextureRegistry] DeleteTexture: id={textureId}");
             return true;
         }
 

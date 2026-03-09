@@ -585,6 +585,33 @@ namespace NvgExample
             _nvg.Restore();
         }
 
+        private void DrawPentagram(float centerX, float centerY, float outerRadius)
+        {
+            float innerRadius = outerRadius * 0.381966f; // golden ratio inner radius
+            float startAngle = -MathF.PI / 2f; // point up
+
+            _nvg.BeginPath();
+            for (int i = 0; i < 5; i++) {
+                float outerAngle = startAngle + i * (2f * MathF.PI / 5f);
+                float outerPointX = centerX + outerRadius * MathF.Cos(outerAngle);
+                float outerPointY = centerY + outerRadius * MathF.Sin(outerAngle);
+
+                float innerAngle = outerAngle + MathF.PI / 5f;
+                float innerPointX = centerX + innerRadius * MathF.Cos(innerAngle);
+                float innerPointY = centerY + innerRadius * MathF.Sin(innerAngle);
+
+                if (i == 0) {
+                    _nvg.MoveTo(outerPointX, outerPointY);
+                } else {
+                    _nvg.LineTo(outerPointX, outerPointY);
+                }
+                _nvg.LineTo(innerPointX, innerPointY);
+            }
+            _nvg.ClosePath();
+            _nvg.FillColour(Colour.Red);
+            _nvg.Fill();
+        }
+
         private void DrawColourwheel(float x, float y, float w, float h, float t)
         {
             float hue = MathF.Sin(t * 0.12f);
@@ -993,6 +1020,7 @@ namespace NvgExample
         public void Render(float mx, float my, float width, float height, float t, bool blowup)
         {
             DrawEyes(width - 250.0f, 50.0f, 150.0f, 100.0f, mx, my, t);
+            DrawPentagram(width - 175.0f, 220.0f, 60.0f);
             DrawParagraph(width - 450.0f, 50.0f, 150.0f, mx, my);
             DrawGraph(0.0f, height / 2.0f, width, height / 2.0f, t);
             DrawColourwheel(width - 300.0f, height - 300.0f, 250.0f, 250.0f, t);

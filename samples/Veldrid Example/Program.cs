@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using NvgExample;
+using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
 using SilkyNvg;
@@ -32,6 +33,8 @@ public static class Program
     private static PerformanceGraph cpuTimeGraph = null!;
     private static Stopwatch frameTimer = null!;
     private static double previousTimeSeconds;
+    private static float mouseX, mouseY;
+    private static bool blowup;
 
     private static void Load()
     {
@@ -91,7 +94,31 @@ public static class Program
         frameTimer = Stopwatch.StartNew();
         previousTimeSeconds = 0;
 
+        // Wire up input (mouse + keyboard) — same as OpenGL example
+        IInputContext inputContext = appWindow.CreateInput();
+        foreach (IKeyboard keyboard in inputContext.Keyboards) {
+            keyboard.KeyDown += OnKeyDown;
+        }
+        foreach (IMouse mouse in inputContext.Mice) {
+            mouse.MouseMove += OnMouseMove;
+        }
+
         Console.WriteLine("Entering render loop. Close window to exit.");
+    }
+
+    private static void OnKeyDown(IKeyboard keyboard, Key key, int scancode)
+    {
+        if (key == Key.Escape) {
+            appWindow.Close();
+        } else if (key == Key.Space) {
+            blowup = !blowup;
+        }
+    }
+
+    private static void OnMouseMove(IMouse mouse, Vector2 mousePosition)
+    {
+        mouseX = mousePosition.X;
+        mouseY = mousePosition.Y;
     }
 
     private static void Render(double _)
@@ -112,7 +139,7 @@ public static class Program
         nvgContext.BeginFrame(new SizeF(windowSize.X, windowSize.Y), 1.0f);
 
         // Draw the full NanoVG demo (eyes, widgets, color wheel, graphs, etc.)
-        demo.Render(0, 0, windowSize.X, windowSize.Y, (float)currentTimeSeconds, false);
+        demo.Render(mouseX, mouseY, windowSize.X, windowSize.Y, (float)currentTimeSeconds, blowup);
 
         // Performance graphs
         frameTimeGraph.Render(5.0f, 5.0f, nvgContext);
@@ -133,6 +160,11 @@ public static class Program
 
     private static void Close()
     {
+        frameTimer!.Stop();
+
+        Console.WriteLine($"Average Frame Time: {frameTimeGraph.GraphAverage * 1000.0f} ms");
+        Console.WriteLine($"        CPU Time: {cpuTimeGraph.GraphAverage * 1000.0f} ms");
+
         Console.WriteLine("Shutting down...");
         graphicsDevice.WaitForIdle();
         demo.Dispose();

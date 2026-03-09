@@ -47,7 +47,7 @@ namespace SilkyNvg.Rendering.Veldrid
             var factory = _graphicsDevice.ResourceFactory;
 
             bool isAlphaOnly = (type == Texture.Alpha);
-            var pixelFormat = isAlphaOnly ? PixelFormat.R8_UNorm : PixelFormat.R8_G8_B8_A8_UNorm;
+            var pixelFormat = isAlphaOnly ? VeldridCompat.PixelFormatR8UNorm : VeldridCompat.PixelFormatR8G8B8A8UNorm;
 
             var textureDescription = TextureDescription.Texture2D(
                 (uint)size.Width,
@@ -60,7 +60,8 @@ namespace SilkyNvg.Rendering.Veldrid
             var gpuTexture = factory.CreateTexture(textureDescription);
             var textureView = factory.CreateTextureView(gpuTexture);
 
-            if (!data.IsEmpty) {
+            if (!data.IsEmpty)
+            {
                 _graphicsDevice.UpdateTexture(
                     gpuTexture,
                     data.ToArray(),
@@ -70,7 +71,8 @@ namespace SilkyNvg.Rendering.Veldrid
             }
 
             int textureId = _nextTextureId++;
-            _textures[textureId] = new ManagedTexture {
+            _textures[textureId] = new ManagedTexture
+            {
                 GpuTexture = gpuTexture,
                 TextureView = textureView,
                 TextureSize = size,
@@ -83,12 +85,14 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public bool DeleteTexture(int textureId)
         {
-            if (!_textures.TryGetValue(textureId, out var managedTexture)) {
+            if (!_textures.TryGetValue(textureId, out var managedTexture))
+            {
                 return false;
             }
 
             // Invalidate cached ResourceSet for this texture
-            if (_resourceSetCache.TryGetValue(textureId, out var cachedResourceSet)) {
+            if (_resourceSetCache.TryGetValue(textureId, out var cachedResourceSet))
+            {
                 cachedResourceSet.Dispose();
                 _resourceSetCache.Remove(textureId);
             }
@@ -102,12 +106,14 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public bool UpdateTexture(int textureId, Rectangle bounds, ReadOnlySpan<byte> data)
         {
-            if (!_textures.TryGetValue(textureId, out var managedTexture)) {
+            if (!_textures.TryGetValue(textureId, out var managedTexture))
+            {
                 Console.WriteLine($"[TextureRegistry] UpdateTexture: texture {textureId} not found!");
                 return false;
             }
 
-            if (data.IsEmpty) {
+            if (data.IsEmpty)
+            {
                 return true;
             }
 
@@ -122,11 +128,15 @@ namespace SilkyNvg.Rendering.Veldrid
             // FontStash passes the ENTIRE atlas data but with dirty region bounds.
             // We must extract just the dirty sub-rectangle for Veldrid's tightly-packed upload.
             byte[] regionPixelData;
-            if ((uint)data.Length == expectedRegionSize) {
+            if ((uint)data.Length == expectedRegionSize)
+            {
                 regionPixelData = data.ToArray();
-            } else {
+            }
+            else
+            {
                 regionPixelData = new byte[expectedRegionSize];
-                for (int row = 0; row < regionHeight; row++) {
+                for (int row = 0; row < regionHeight; row++)
+                {
                     int sourceOffset = (int)(((bounds.Y + row) * atlasRowBytes) + (bounds.X * bytesPerPixel));
                     int destOffset = (int)(row * regionRowBytes);
                     data.Slice(sourceOffset, (int)regionRowBytes).CopyTo(regionPixelData.AsSpan(destOffset));
@@ -145,7 +155,8 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public bool GetTextureSize(int textureId, out Size size)
         {
-            if (!_textures.TryGetValue(textureId, out var managedTexture)) {
+            if (!_textures.TryGetValue(textureId, out var managedTexture))
+            {
                 size = new Size(1, 1);
                 return false;
             }
@@ -160,7 +171,8 @@ namespace SilkyNvg.Rendering.Veldrid
         /// </summary>
         public TextureView GetTextureView(int textureId)
         {
-            if (!_textures.TryGetValue(textureId, out var managedTexture)) {
+            if (!_textures.TryGetValue(textureId, out var managedTexture))
+            {
                 throw new InvalidOperationException(
                     $"TextureRegistry.GetTextureView: Texture ID {textureId} not found. " +
                     "A draw call references a texture that was never created or was already deleted.");
@@ -174,11 +186,13 @@ namespace SilkyNvg.Rendering.Veldrid
         /// </summary>
         public ResourceSet GetOrCreateTexturedResourceSet(int textureId)
         {
-            if (_resourceSetCache.TryGetValue(textureId, out var existingResourceSet)) {
+            if (_resourceSetCache.TryGetValue(textureId, out var existingResourceSet))
+            {
                 return existingResourceSet;
             }
 
-            if (!_textures.TryGetValue(textureId, out var managedTexture)) {
+            if (!_textures.TryGetValue(textureId, out var managedTexture))
+            {
                 throw new InvalidOperationException(
                     $"TextureRegistry: Texture ID {textureId} not found. " +
                     "A draw call references a texture that was never created or was already deleted.");
@@ -196,13 +210,15 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public void Dispose()
         {
-            foreach (var kvp in _textures) {
+            foreach (var kvp in _textures)
+            {
                 kvp.Value.TextureView.Dispose();
                 kvp.Value.GpuTexture.Dispose();
             }
             _textures.Clear();
 
-            foreach (var kvp in _resourceSetCache) {
+            foreach (var kvp in _resourceSetCache)
+            {
                 kvp.Value.Dispose();
             }
             _resourceSetCache.Clear();

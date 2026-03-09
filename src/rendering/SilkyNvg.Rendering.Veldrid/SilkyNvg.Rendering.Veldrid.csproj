@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <!-- UseLegacyVeldrid is inherited from Directory.Build.props (workspace root or parent).
+         Default (undefined): uses ppy.Veldrid — the actively maintained fork used by osu!
+         Set UseLegacyVeldrid=true in your Directory.Build.props to use upstream Veldrid 4.9.0.
+         If pulling SilkyNvg into a standalone project, ppy.Veldrid is used by default. -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,7 +18,14 @@
     <ProjectReference Include="..\..\components\SilkyNvg.Tools\SilkyNvg.Tools.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- ppy.Veldrid fork: actively maintained, Android/iOS support (default) -->
+  <ItemGroup Condition="'$(UseLegacyVeldrid)' != 'true'">
+    <PackageReference Include="ppy.Veldrid" Version="4.9.69-ga405fe8484" />
+    <PackageReference Include="ppy.Veldrid.SPIRV" Version="1.0.15-gfbb03d21c2" />
+  </ItemGroup>
+
+  <!-- Legacy upstream Veldrid 4.9.0 (abandoned March 2024, desktop-only) -->
+  <ItemGroup Condition="'$(UseLegacyVeldrid)' == 'true'">
     <PackageReference Include="Veldrid" Version="4.9.0" />
     <PackageReference Include="Veldrid.SPIRV" Version="1.0.15" />
   </ItemGroup>

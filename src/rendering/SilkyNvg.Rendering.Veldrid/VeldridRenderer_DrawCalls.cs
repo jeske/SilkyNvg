@@ -140,7 +140,7 @@ namespace SilkyNvg.Rendering.Veldrid
             {
                 VertexOffset = vertexOffset,
                 VertexCount = vertexCount,
-                BlendState = BlendStateDescription.SingleAlphaBlend
+                BlendState = VeldridCompat.SingleAlphaBlend
             };
 
             // Determine draw call type based on paint properties

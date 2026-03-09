@@ -77,7 +77,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
             var solidFillPipelineDesc = new GraphicsPipelineDescription {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
                     cullMode: FaceCullMode.None,
@@ -108,13 +108,13 @@ namespace SilkyNvg.Rendering.Veldrid
                 AddressModeU = SamplerAddressMode.Clamp,
                 AddressModeV = SamplerAddressMode.Clamp,
                 AddressModeW = SamplerAddressMode.Clamp,
-                Filter = SamplerFilter.MinLinear_MagLinear_MipLinear,
+                Filter = VeldridCompat.LinearFilter,
                 MinimumLod = 0,
                 MaximumLod = 0
             });
 
             var texturedPipelineDesc = new GraphicsPipelineDescription {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
                     cullMode: FaceCullMode.None,
@@ -140,7 +140,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 new ResourceLayoutElementDescription("GradientParams", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
 
             var gradientPipelineDesc = new GraphicsPipelineDescription {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
                     cullMode: FaceCullMode.None,
@@ -172,13 +172,13 @@ namespace SilkyNvg.Rendering.Veldrid
                 AddressModeU = SamplerAddressMode.Clamp,
                 AddressModeV = SamplerAddressMode.Clamp,
                 AddressModeW = SamplerAddressMode.Clamp,
-                Filter = SamplerFilter.MinLinear_MagLinear_MipLinear,
+                Filter = VeldridCompat.LinearFilter,
                 MinimumLod = 0,
                 MaximumLod = 0
             });
 
             var imagePatternPipelineDesc = new GraphicsPipelineDescription {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
                     cullMode: FaceCullMode.None,
@@ -252,7 +252,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // Solid cover (vertex color only)
             _stencilCoverSolidPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
                 RasterizerState = stencilCoverRasterizer,
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
@@ -263,7 +263,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // Gradient cover (gradient shader + stencil test)
             _stencilCoverGradientPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
                 RasterizerState = stencilCoverRasterizer,
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
@@ -274,7 +274,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // Image pattern cover (image pattern shader + stencil test)
             _stencilCoverImagePatternPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
-                BlendState = BlendStateDescription.SingleAlphaBlend,
+                BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
                 RasterizerState = stencilCoverRasterizer,
                 PrimitiveTopology = PrimitiveTopology.TriangleList,

@@ -1,5 +1,9 @@
 <Project>
     <PropertyGroup>
+        <!-- UseLegacyVeldrid: set to true to use upstream Veldrid 4.9.0 (abandoned March 2024).
+             Default (undefined/false): uses ppy.Veldrid fork (actively maintained, Android/iOS support).
+             Override this in a parent Directory.Build.props or pass -p:UseLegacyVeldrid=true on CLI. -->
+        <DefineConstants Condition="'$(UseLegacyVeldrid)' == 'true'">$(DefineConstants);USE_LEGACY_VELDRID</DefineConstants>
         <TargetFramework>net5.0</TargetFramework>
         <Version>1.0.7</Version>
         <Authors>Matija Brown</Authors>

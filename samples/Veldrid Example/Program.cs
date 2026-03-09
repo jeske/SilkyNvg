@@ -10,6 +10,7 @@ using Silk.NET.Windowing;
 using SilkyNvg;
 using SilkyNvg.Rendering.Veldrid;
 using Veldrid;
+using VeldridCompat = SilkyNvg.Rendering.Veldrid.VeldridCompat;
 
 /// <summary>
 /// Standalone Veldrid example for the SilkyNvg VeldridRenderer backend.
@@ -43,7 +44,7 @@ public static class Program
             PreferDepthRangeZeroToOne = true,
             SyncToVerticalBlank = false,  // Disable vsync for performance comparison
             // 8-bit stencil required for non-convex path fill (stencil-then-cover)
-            SwapchainDepthFormat = PixelFormat.D24_UNorm_S8_UInt
+            SwapchainDepthFormat = VeldridCompat.DepthStencilD24S8
         };
 
         // Get native window handle for swapchain creation
@@ -65,7 +66,7 @@ public static class Program
                 "Use --d3d11 or --vulkan. (OpenGL requires OpenGLPlatformInfo, not SwapchainDescription)")
         };
         Console.WriteLine($"Graphics backend: {graphicsDevice.BackendType}");
-        appWindow.Title = $"SilkyNvg Veldrid Backend Example ({graphicsDevice.BackendType})";
+        appWindow.Title = $"SilkyNvg {VeldridCompat.PackageName} Backend Example ({graphicsDevice.BackendType})";
 
         // Diagnostic: compare window logical size vs framebuffer physical size
         uint framebufferPixelWidth = graphicsDevice.SwapchainFramebuffer.Width;
@@ -199,7 +200,7 @@ public static class Program
 
         WindowOptions windowOptions = WindowOptions.Default;
         windowOptions.Size = new Vector2D<int>(WINDOW_WIDTH, WINDOW_HEIGHT);
-        windowOptions.Title = $"SilkyNvg Veldrid Backend Example ({selectedGraphicsBackend})";
+        windowOptions.Title = $"SilkyNvg {VeldridCompat.PackageName} Backend Example ({selectedGraphicsBackend})";
         windowOptions.VSync = false;  // Disable vsync for performance comparison
         windowOptions.PreferredDepthBufferBits = 24;
         windowOptions.PreferredStencilBufferBits = 8;

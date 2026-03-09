@@ -73,7 +73,7 @@ public class VeldridAndroidRenderer
         // Create Veldrid GraphicsDevice with Vulkan backend
         GraphicsDeviceOptions vulkanDeviceOptions = new GraphicsDeviceOptions {
             PreferDepthRangeZeroToOne = true,
-            SyncToVerticalBlank = true,
+            SyncToVerticalBlank = false,  // Disable vsync for max performance
             // 8-bit stencil required for non-convex path fill (stencil-then-cover)
             SwapchainDepthFormat = VeldridCompat.DepthStencilD24S8
         };
@@ -130,7 +130,8 @@ public class VeldridAndroidRenderer
         isRenderLoopRunning = true;
         renderLoopThread = new Thread(() => RenderLoopBody(getTouchMouseX, getTouchMouseY)) {
             Name = "NvgVeldridRenderThread",
-            IsBackground = true
+            IsBackground = true,
+            Priority = ThreadPriority.Highest  // Prioritize render thread
         };
         renderLoopThread.Start();
     }

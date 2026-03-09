@@ -8,6 +8,8 @@
     <LangVersion>latest</LangVersion>
     <!-- This is a build-time tool, not part of the runtime project -->
     <IsPackable>false</IsPackable>
+    <!-- Suppress Mono runtime restore (not needed for build-time tool) -->
+    <UseMonoRuntime>false</UseMonoRuntime>
   </PropertyGroup>
 
   <ItemGroup>

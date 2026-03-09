@@ -10,6 +10,10 @@
     <ApplicationId>com.arcane.veldrid.android.example</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <!-- Performance: AOT compilation for faster execution -->
+    <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
+    <!-- Explicitly set Android runtime identifiers (prevents win-x64 from being inferred) -->
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>

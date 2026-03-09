@@ -72,7 +72,7 @@ namespace SilkyNvg.Rendering.Veldrid
                     case DrawCallType.SolidFill:
                         if (lastPipelineType != DrawCallType.SolidFill) {
                             commandList.SetPipeline(_solidFillPipeline);
-                            commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+                            commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                             lastPipelineType = DrawCallType.SolidFill;
                             lastBoundTextureId = -1;
                         }
@@ -150,14 +150,14 @@ namespace SilkyNvg.Rendering.Veldrid
                     // Pass 1: Write winding count to stencil buffer (no color output)
                     // Front faces increment, back faces decrement (non-zero winding rule)
                     commandList.SetPipeline(_stencilFillPipeline);
-                    commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+                    commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                     commandList.Draw(
                         (uint)drawCall.StencilFillVertexCount, 1,
                         (uint)drawCall.VertexOffset, 0);
 
                     // Pass 2: Draw cover quad where stencil != 0, zeroing stencil as we go
                     commandList.SetPipeline(_stencilCoverSolidPipeline);
-                    commandList.SetGraphicsResourceSet(0, _solidFillResourceSet);
+                    commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                     commandList.Draw(6, 1, (uint)drawCall.CoverQuadVertexOffset, 0);
 
                     // Reset pipeline tracking (stencil pipelines are transient)

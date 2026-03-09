@@ -29,7 +29,7 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             var factory = _graphicsDevice.ResourceFactory;
 
-            _solidFillShaders = factory.CreateFromSpirv(
+            _vertexColorShaders = factory.CreateFromSpirv(
                 new ShaderDescription(ShaderStages.Vertex, SolidFillShader.GetVertexShaderBytes(), "main"),
                 new ShaderDescription(ShaderStages.Fragment, SolidFillShader.GetFragmentShaderBytes(), "main"));
 
@@ -54,7 +54,7 @@ namespace SilkyNvg.Rendering.Veldrid
             var sharedVertexLayout = ShaderLayouts.CreateVertexLayout();
 
             // Resource layout for view size uniform only
-            _solidFillResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
+            _viewSizeOnlyResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
                 new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
 
             var solidFillPipelineDesc = new GraphicsPipelineDescription {
@@ -67,10 +67,10 @@ namespace SilkyNvg.Rendering.Veldrid
                     depthClipEnabled: false,
                     scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _solidFillResourceLayout },
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
                 ShaderSet = new ShaderSetDescription(
                     new[] { sharedVertexLayout },
-                    _solidFillShaders),
+                    _vertexColorShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
 
@@ -212,10 +212,10 @@ namespace SilkyNvg.Rendering.Veldrid
                     depthClipEnabled: false,
                     scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _solidFillResourceLayout },
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
                 ShaderSet = new ShaderSetDescription(
                     new[] { sharedVertexLayout },
-                    _solidFillShaders),
+                    _vertexColorShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
 
@@ -248,10 +248,10 @@ namespace SilkyNvg.Rendering.Veldrid
                     depthClipEnabled: false,
                     scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _solidFillResourceLayout },
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
                 ShaderSet = new ShaderSetDescription(
                     new[] { sharedVertexLayout },
-                    _solidFillShaders),
+                    _vertexColorShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
             };
 
@@ -273,8 +273,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 BufferUsage.UniformBuffer | BufferUsage.Dynamic));
 
             // Resource set for solid fill pipeline (just view size uniform)
-            _solidFillResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
-                _solidFillResourceLayout,
+            _viewSizeOnlyResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
+                _viewSizeOnlyResourceLayout,
                 _viewSizeUniformBuffer));
 
             // Paint uniform buffer — shared by gradient and image pattern pipelines (updated per draw call)

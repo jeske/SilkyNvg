@@ -26,9 +26,9 @@ namespace SilkyNvg.Rendering.Veldrid
         private Pipeline? _solidFillPipeline;
         private DeviceBuffer? _vertexBuffer;
         private DeviceBuffer? _viewSizeUniformBuffer;
-        private ResourceLayout? _solidFillResourceLayout;
-        private ResourceSet? _solidFillResourceSet;
-        private Shader[]? _solidFillShaders;
+        private ResourceLayout? _viewSizeOnlyResourceLayout;  // Shared: solidFill + stencilFill + stencilCover
+        private ResourceSet? _viewSizeOnlyResourceSet;        // Shared: solidFill + stencilFill + stencilCover
+        private Shader[]? _vertexColorShaders;                // Shared: solidFill + stencilFill + stencilCover
 
         // Pipeline resources - textured (font atlas text rendering)
         private Pipeline? _texturedPipeline;
@@ -139,10 +139,10 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // Dispose solid fill pipeline resources
             _solidFillPipeline?.Dispose();
-            _solidFillResourceSet?.Dispose();
-            _solidFillResourceLayout?.Dispose();
-            if (_solidFillShaders != null) {
-                foreach (var shader in _solidFillShaders) {
+            _viewSizeOnlyResourceSet?.Dispose();
+            _viewSizeOnlyResourceLayout?.Dispose();
+            if (_vertexColorShaders != null) {
+                foreach (var shader in _vertexColorShaders) {
                     shader.Dispose();
                 }
             }

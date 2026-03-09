@@ -7,12 +7,26 @@ using SilkyNvg.Text;
 using SilkyNvg.Transforms;
 using System;
 using System.Drawing;
+using System.IO;
 using System.Numerics;
 
 namespace NvgExample
 {
     public class Demo : IDisposable
     {
+        /// <summary>
+        /// Pluggable file loader for cross-platform asset loading.
+        /// Default: File.ReadAllBytes (works on desktop).
+        /// On Android: set to a delegate that reads from AssetManager before constructing Demo.
+        /// On iOS: set to a delegate that reads from the app bundle.
+        /// </summary>
+        private static Func<string, byte[]> _fileLoader = File.ReadAllBytes;
+
+        /// <summary>
+        /// Sets the file loader delegate used by Demo to load fonts and images.
+        /// Call this BEFORE constructing a Demo instance.
+        /// </summary>
+        public static void SetFileLoader(Func<string, byte[]> fileLoader) => _fileLoader = fileLoader;
 
         private const int ICON_SEARCH = 0x1F50D;
         private const int ICON_CIRCLED_CROSS = 0x2716;
@@ -766,37 +780,40 @@ namespace NvgExample
         {
             _nvg = nvg;
 
+            // Load images via pluggable file loader (supports Android AssetManager, iOS bundles, etc.)
             for (uint i = 0; i < 12; i++)
             {
-                string file = "./images/image" + i + ".jpg";
-                _images[i] = _nvg.CreateImage(file, 0);
+                string imageFilePath = "./images/image" + i + ".jpg";
+                byte[] imageFileBytes = _fileLoader(imageFilePath);
+                _images[i] = _nvg.CreateImageMem(0, imageFileBytes);
                 if (_images[i] == 0)
                 {
-                    Console.Error.WriteLine("Could not load " + file);
+                    Console.Error.WriteLine("Could not load " + imageFilePath);
                     Environment.Exit(-1);
                 }
             }
 
-            _fontIcons = _nvg.CreateFont("icons", "./fonts/entypo.ttf");
+            // Load fonts via pluggable file loader
+            _fontIcons = _nvg.CreateFontMem("icons", _fileLoader("./fonts/entypo.ttf"), 1);
             if (_fontIcons == -1)
             {
                 Console.Error.WriteLine("Could not add font icons.");
                 Environment.Exit(-1);
             }
-            _fontNormal = _nvg.CreateFont("sans", "./fonts/Roboto-Regular.ttf");
-            if (_fontIcons == -1)
+            _fontNormal = _nvg.CreateFontMem("sans", _fileLoader("./fonts/Roboto-Regular.ttf"), 1);
+            if (_fontNormal == -1)
             {
                 Console.Error.WriteLine("Could not add font regular.");
                 Environment.Exit(-1);
             }
-            _fontBold = _nvg.CreateFont("sans-bold", "./fonts/Roboto-Bold.ttf");
-            if (_fontIcons == -1)
+            _fontBold = _nvg.CreateFontMem("sans-bold", _fileLoader("./fonts/Roboto-Bold.ttf"), 1);
+            if (_fontBold == -1)
             {
                 Console.Error.WriteLine("Could not add font bold.");
                 Environment.Exit(-1);
             }
-            _fontEmoji = _nvg.CreateFont("emoji", "./fonts/NotoEmoji-Regular.ttf");
-            if (_fontIcons == -1)
+            _fontEmoji = _nvg.CreateFontMem("emoji", _fileLoader("./fonts/NotoEmoji-Regular.ttf"), 1);
+            if (_fontEmoji == -1)
             {
                 Console.Error.WriteLine("Could not add font emoji.");
                 Environment.Exit(-1);

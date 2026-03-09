@@ -77,8 +77,10 @@ namespace SilkyNvg.Rendering.Veldrid
         private DeviceBuffer? _paintUniformBuffer;
 
         // Pipeline resources - stencil non-convex fill (two-pass stencil-then-cover)
-        private Pipeline? _stencilFillPipeline;       // Pass 1: write stencil, no color
-        private Pipeline? _stencilCoverSolidPipeline;  // Pass 2: fill where stencil != 0, clear stencil
+        private Pipeline? _stencilFillPipeline;              // Pass 1: write stencil, no color
+        private Pipeline? _stencilCoverSolidPipeline;         // Pass 2 (solid): fill where stencil != 0, clear stencil
+        private Pipeline? _stencilCoverGradientPipeline;      // Pass 2 (gradient): gradient fill where stencil != 0
+        private Pipeline? _stencilCoverImagePatternPipeline;  // Pass 2 (image): image pattern fill where stencil != 0
 
         // Pipeline resources - image pattern (RGBA texture fill with paintMat UV transform)
         private Pipeline? _imagePatternPipeline;

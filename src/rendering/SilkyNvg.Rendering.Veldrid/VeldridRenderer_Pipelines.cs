@@ -25,6 +25,25 @@ namespace SilkyNvg.Rendering.Veldrid
             StencilReference = 0
         };
 
+        /// <summary>
+        /// Stencil cover depth-stencil state: draw where stencil != 0, zero stencil on pass.
+        /// Shared by all stencil cover pipeline variants (solid, gradient, image pattern).
+        /// </summary>
+        private static readonly DepthStencilStateDescription StencilCoverDepthStencilState = new DepthStencilStateDescription {
+            DepthTestEnabled = false,
+            DepthWriteEnabled = false,
+            StencilTestEnabled = true,
+            StencilFront = new StencilBehaviorDescription(
+                StencilOperation.Zero, StencilOperation.Zero,
+                StencilOperation.Zero, ComparisonKind.NotEqual),
+            StencilBack = new StencilBehaviorDescription(
+                StencilOperation.Zero, StencilOperation.Zero,
+                StencilOperation.Zero, ComparisonKind.NotEqual),
+            StencilReadMask = 0xFF,
+            StencilWriteMask = 0xFF,
+            StencilReference = 0
+        };
+
         private void CreateShaders()
         {
             var factory = _graphicsDevice.ResourceFactory;
@@ -221,41 +240,48 @@ namespace SilkyNvg.Rendering.Veldrid
 
             _stencilFillPipeline = factory.CreateGraphicsPipeline(stencilFillPipelineDesc);
 
-            // === STENCIL COVER PIPELINE (Pass 2: fill where stencil != 0, then zero stencil) ===
-            // Draws the bounds quad with the actual fill color. Only pixels where stencil != 0
-            // (inside the non-convex path) get colored. Stencil is zeroed on pass to clean up.
-            var stencilCoverSolidPipelineDesc = new GraphicsPipelineDescription {
+            // === STENCIL COVER PIPELINES (Pass 2: fill where stencil != 0, then zero stencil) ===
+            // Three variants for the three paint types: solid, gradient, image pattern.
+            // Each uses the same stencil state (NotEqual to 0, zero on pass) but different shaders.
+            var stencilCoverRasterizer = new RasterizerStateDescription(
+                cullMode: FaceCullMode.None,
+                fillMode: PolygonFillMode.Solid,
+                frontFace: FrontFace.CounterClockwise,
+                depthClipEnabled: false,
+                scissorTestEnabled: true);
+
+            // Solid cover (vertex color only)
+            _stencilCoverSolidPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
                 BlendState = BlendStateDescription.SingleAlphaBlend,
-                DepthStencilState = new DepthStencilStateDescription {
-                    DepthTestEnabled = false,
-                    DepthWriteEnabled = false,
-                    StencilTestEnabled = true,
-                    // Restore NotEqual test — should now work if stencil fill writes ref=1
-                    StencilFront = new StencilBehaviorDescription(
-                        StencilOperation.Zero, StencilOperation.Zero,
-                        StencilOperation.Zero, ComparisonKind.NotEqual),
-                    StencilBack = new StencilBehaviorDescription(
-                        StencilOperation.Zero, StencilOperation.Zero,
-                        StencilOperation.Zero, ComparisonKind.NotEqual),
-                    StencilReadMask = 0xFF,
-                    StencilWriteMask = 0xFF,
-                    StencilReference = 0
-                },
-                RasterizerState = new RasterizerStateDescription(
-                    cullMode: FaceCullMode.None,
-                    fillMode: PolygonFillMode.Solid,
-                    frontFace: FrontFace.CounterClockwise,
-                    depthClipEnabled: false,
-                    scissorTestEnabled: true),
+                DepthStencilState = StencilCoverDepthStencilState,
+                RasterizerState = stencilCoverRasterizer,
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
-                ShaderSet = new ShaderSetDescription(
-                    new[] { sharedVertexLayout },
-                    _vertexColorShaders),
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
                 Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
-            };
+            });
 
-            _stencilCoverSolidPipeline = factory.CreateGraphicsPipeline(stencilCoverSolidPipelineDesc);
+            // Gradient cover (gradient shader + stencil test)
+            _stencilCoverGradientPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
+                BlendState = BlendStateDescription.SingleAlphaBlend,
+                DepthStencilState = StencilCoverDepthStencilState,
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _gradientResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _gradientShaders),
+                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+            });
+
+            // Image pattern cover (image pattern shader + stencil test)
+            _stencilCoverImagePatternPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription {
+                BlendState = BlendStateDescription.SingleAlphaBlend,
+                DepthStencilState = StencilCoverDepthStencilState,
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _imagePatternResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _imagePatternShaders),
+                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+            });
         }
 
         private void CreateBuffers()

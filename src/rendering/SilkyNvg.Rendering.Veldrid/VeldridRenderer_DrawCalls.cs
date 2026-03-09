@@ -39,6 +39,7 @@ namespace SilkyNvg.Rendering.Veldrid
             // NonConvexFill sub-ranges (vertex data is: [stencil fill tris] [fringe tris] [cover quad])
             public int StencilFillVertexCount;   // Fill triangles for stencil pass
             public int CoverQuadVertexOffset;    // Bounds quad for cover pass (always 6 vertices)
+            public DrawCallType NonConvexCoverPaintType; // Original paint type for cover pass (SolidFill/Gradient/ImagePattern)
         }
 
         /// <summary>
@@ -262,6 +263,8 @@ namespace SilkyNvg.Rendering.Veldrid
 
             if (totalVertexCount > 0) {
                 var drawCall = CreateDrawCall(vertexOffset, totalVertexCount, paint, scissor);
+                // Preserve the original paint type (SolidFill/Gradient/ImagePattern) for the cover pass
+                drawCall.NonConvexCoverPaintType = drawCall.Type;
                 drawCall.Type = DrawCallType.NonConvexFill;
                 drawCall.StencilFillVertexCount = stencilFillVertexCount;
                 drawCall.CoverQuadVertexOffset = coverQuadVertexOffset;

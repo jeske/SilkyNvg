@@ -155,9 +155,34 @@ namespace SilkyNvg.Rendering.Veldrid
                         (uint)drawCall.StencilFillVertexCount, 1,
                         (uint)drawCall.VertexOffset, 0);
 
-                    // Pass 2: Draw cover quad where stencil != 0, zeroing stencil as we go
-                    commandList.SetPipeline(_stencilCoverSolidPipeline);
-                    commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
+                    // Pass 2: Draw cover quad where stencil != 0, zeroing stencil as we go.
+                    // Use the correct cover pipeline based on the original paint type.
+                    switch (drawCall.NonConvexCoverPaintType) {
+                        case DrawCallType.Gradient:
+                            commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
+                            commandList.SetPipeline(_stencilCoverGradientPipeline);
+                            commandList.SetGraphicsResourceSet(0, _gradientResourceSet);
+                            break;
+                        case DrawCallType.ImagePattern:
+                            commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
+                            commandList.SetPipeline(_stencilCoverImagePatternPipeline);
+                            if (!_imagePatternResourceSetCache.TryGetValue(drawCall.TextureId, out var coverImagePatternResourceSet)) {
+                                var coverPatternTextureView = _textureRegistry.GetTextureView(drawCall.TextureId);
+                                coverImagePatternResourceSet = _graphicsDevice.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
+                                    _imagePatternResourceLayout,
+                                    _viewSizeUniformBuffer,
+                                    _paintUniformBuffer,
+                                    coverPatternTextureView,
+                                    _imagePatternSampler));
+                                _imagePatternResourceSetCache[drawCall.TextureId] = coverImagePatternResourceSet;
+                            }
+                            commandList.SetGraphicsResourceSet(0, coverImagePatternResourceSet);
+                            break;
+                        default: // SolidFill
+                            commandList.SetPipeline(_stencilCoverSolidPipeline);
+                            commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
+                            break;
+                    }
                     commandList.Draw(6, 1, (uint)drawCall.CoverQuadVertexOffset, 0);
 
                     // Reset pipeline tracking (stencil pipelines are transient)

@@ -15,4 +15,11 @@
     <PackageReference Include="ppy.Veldrid.SPIRV" Version="1.0.15-gfbb03d21c2" />
   </ItemGroup>
 
+  <!-- After building the compiler, run it to generate shader files -->
+  <Target Name="RunShaderCompiler" AfterTargets="Build">
+    <Message Text="Running shader compiler to generate precompiled shaders..." Importance="high" />
+    <Exec Command="dotnet run --project $(MSBuildProjectFullPath) --no-build"
+          WorkingDirectory="$(MSBuildProjectDirectory)\.." />
+  </Target>
+
 </Project>

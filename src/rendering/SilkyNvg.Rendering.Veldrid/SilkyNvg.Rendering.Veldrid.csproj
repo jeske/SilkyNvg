@@ -16,6 +16,9 @@
     <ProjectReference Include="..\..\components\SilkyNvg.Blending\SilkyNvg.Blending.csproj" />
     <ProjectReference Include="..\..\components\SilkyNvg.Images\SilkyNvg.Images.csproj" />
     <ProjectReference Include="..\..\components\SilkyNvg.Tools\SilkyNvg.Tools.csproj" />
+    
+    <!-- Build shader compiler first to generate .generated.cs files before this project compiles -->
+    <ProjectReference Include="Scripts\CompileShaders.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- ppy.Veldrid fork: actively maintained, Android/iOS support (default) -->
@@ -35,6 +38,14 @@
     <None Include="Scripts\**" />
     <Compile Remove="Shaders\Source\**" />
     <None Include="Shaders\Source\**" />
+  </ItemGroup>
+
+  <!-- Explicitly include generated shader files so MSBuild always sees them -->
+  <ItemGroup>
+    <Compile Include="Shaders\Compiled\SolidFillShaders.generated.cs" />
+    <Compile Include="Shaders\Compiled\TexturedShaders.generated.cs" />
+    <Compile Include="Shaders\Compiled\GradientShaders.generated.cs" />
+    <Compile Include="Shaders\Compiled\ImagePatternShaders.generated.cs" />
   </ItemGroup>
 
 </Project>

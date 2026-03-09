@@ -16,9 +16,13 @@ using Veldrid.SPIRV;
 // Configuration
 // ================================================================
 
+// When run from MSBuild, the working directory is the project directory
+// When run manually from project root, need to specify the backend directory
 string veldridBackendDir = args.Length > 0
     ? args[0]
-    : "EngineSrc/Arcane.Client/SilkyNvg/src/rendering/SilkyNvg.Rendering.Veldrid";
+    : Directory.Exists("Shaders")
+        ? "." // Running from project directory (MSBuild)
+        : "EngineSrc/Arcane.Client/SilkyNvg/src/rendering/SilkyNvg.Rendering.Veldrid"; // Running from repo root
 
 string shaderSourceDir = Path.Combine(veldridBackendDir, "Shaders", "Source");
 string shaderCompiledDir = Path.Combine(veldridBackendDir, "Shaders", "Compiled");

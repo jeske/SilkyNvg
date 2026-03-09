@@ -71,6 +71,15 @@ namespace OpenGL_Example
 
             gl = window.CreateOpenGL();
 
+            // Diagnostic: compare window logical size vs framebuffer physical size
+            Vector2 diagnosticWinSize = window.Size.As<float>().ToSystem();
+            Vector2 diagnosticFbSize = window.FramebufferSize.As<float>().ToSystem();
+            float diagnosticPixelRatio = diagnosticFbSize.X / diagnosticWinSize.X;
+            Console.WriteLine($"[OPENGL DIAG] Window logical size: {diagnosticWinSize.X}x{diagnosticWinSize.Y}");
+            Console.WriteLine($"[OPENGL DIAG] Framebuffer pixel size: {diagnosticFbSize.X}x{diagnosticFbSize.Y}");
+            Console.WriteLine($"[OPENGL DIAG] Pixel ratio (fb/win): {diagnosticPixelRatio:F3}x{diagnosticFbSize.Y / diagnosticWinSize.Y:F3}");
+            Console.WriteLine($"[OPENGL DIAG] NVG viewport: {diagnosticWinSize.X}x{diagnosticWinSize.Y}, pixelRatio={diagnosticPixelRatio:F3}");
+
             OpenGLRenderer nvgRenderer = new(CreateFlags.StencilStrokes | CreateFlags.Debug, gl);
             nvg = Nvg.Create(nvgRenderer);
 

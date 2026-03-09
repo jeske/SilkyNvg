@@ -52,6 +52,9 @@ namespace SilkyNvg.Rendering.Veldrid
     /// </remarks>
     public sealed partial class VeldridRenderer : INvgRenderer
     {
+        // Adaptive buffer downsizing: evaluate every N frames to prevent permanent bloat from rare large draws
+        private const int FLUSHES_BEFORE_DOWNSIZE_EVAL = 3000;
+
         private readonly GraphicsDevice _graphicsDevice;
         private readonly bool _edgeAntiAlias;
 
@@ -96,6 +99,10 @@ namespace SilkyNvg.Rendering.Veldrid
         private ShaderLayouts.NvgVertex[] _vertexBatchArray = new ShaderLayouts.NvgVertex[4096];
         private int _vertexBatchCount = 0;
         private readonly List<DrawCall> _drawCalls = new(64);
+
+        // Adaptive buffer downsizing tracking (prevents permanent bloat from rare large draws)
+        private int _flushesSinceLastBufferResize = 0;
+        private int _peakVertexCountSinceLastResize = 0;
         private SizeF _viewportSize;
         private bool _isInitialized;
 
@@ -150,6 +157,12 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public void Cancel()
         {
+            // Track peak vertex usage for adaptive downsizing
+            if (_vertexBatchCount > _peakVertexCountSinceLastResize) {
+                _peakVertexCountSinceLastResize = _vertexBatchCount;
+            }
+            _flushesSinceLastBufferResize++;
+            
             _vertexBatchCount = 0;
             _drawCalls.Clear();
         }

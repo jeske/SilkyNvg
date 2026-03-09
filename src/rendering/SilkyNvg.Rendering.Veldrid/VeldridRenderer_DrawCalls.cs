@@ -14,16 +14,39 @@ namespace SilkyNvg.Rendering.Veldrid
         /// Ensures the vertex batch array has capacity for n additional vertices.
         /// Uses 1.5x growth strategy (same as OpenGL backend).
         /// When the CPU array grows, the GPU buffer is resized to match.
+        /// Includes adaptive downsizing: if buffer is underutilized for FLUSHES_BEFORE_DOWNSIZE_EVAL flushes,
+        /// it shrinks to 1.25x the peak usage to prevent permanent bloat from rare large draws.
         /// </summary>
         private void EnsureVertexCapacity(int additionalVertexCount)
         {
             int requiredCapacity = _vertexBatchCount + additionalVertexCount;
+            
+            // Check for upsize (growth)
             if (requiredCapacity > _vertexBatchArray.Length) {
                 int newCapacity = Math.Max(requiredCapacity, 4096) + _vertexBatchArray.Length / 2;
                 Array.Resize(ref _vertexBatchArray, newCapacity);
                 
                 // Resize GPU buffer to match CPU array capacity (unified sizing)
                 ResizeGpuVertexBuffer(newCapacity);
+                
+                // Reset downsizing tracking after resize
+                _flushesSinceLastBufferResize = 0;
+                _peakVertexCountSinceLastResize = 0;
+            }
+            // Check for downsize (adaptive shrinking after sustained underutilization)
+            else if (_flushesSinceLastBufferResize >= FLUSHES_BEFORE_DOWNSIZE_EVAL) {
+                // Reset counter regardless of whether we downsize (keeps common path fast)
+                _flushesSinceLastBufferResize = 0;
+                
+                // Only downsize if peak usage is less than half of current capacity
+                if (_peakVertexCountSinceLastResize < _vertexBatchArray.Length / 2) {
+                    int downsizedCapacity = Math.Max(4096, (int)(_peakVertexCountSinceLastResize * 1.25f));
+                    Array.Resize(ref _vertexBatchArray, downsizedCapacity);
+                    ResizeGpuVertexBuffer(downsizedCapacity);
+                }
+                
+                // Reset peak tracking for next evaluation period
+                _peakVertexCountSinceLastResize = 0;
             }
         }
 

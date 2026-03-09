@@ -62,7 +62,6 @@ namespace SilkyNvg.Rendering.Veldrid
         private readonly List<DrawCall> _drawCalls = new(64);
         private SizeF _viewportSize;
         private bool _isInitialized;
-        private bool _debugLogNextFlush = true; // Log draw calls on first flush for debugging
 
         // Active command list for rendering - MUST be set before BeginFrame/EndFrame!
         // Veldrid requires explicit CommandList management (unlike OpenGL's immediate mode).

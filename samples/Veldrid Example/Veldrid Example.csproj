@@ -19,6 +19,7 @@
          Veldrid.StartupUtilities uses SDL2 which is NOT DPI-aware on Windows,
          causing the window to be upscaled by the OS and everything looks blurry. -->
     <PackageReference Include="Silk.NET.Windowing" Version="2.22.0" />
+    <PackageReference Include="Silk.NET.OpenGL" Version="2.22.0" />
   </ItemGroup>
 
 </Project>

@@ -20,6 +20,7 @@ public static class Program
     private const int WINDOW_WIDTH = 1000;
     private const int WINDOW_HEIGHT = 600;
 
+    private static GraphicsBackend selectedGraphicsBackend = GraphicsBackend.Direct3D11;
     private static IWindow appWindow = null!;
     private static GraphicsDevice graphicsDevice = null!;
     private static CommandList renderCommandList = null!;
@@ -53,7 +54,13 @@ public static class Program
             graphicsDeviceOptions.SwapchainDepthFormat,
             graphicsDeviceOptions.SyncToVerticalBlank);
 
-        graphicsDevice = GraphicsDevice.CreateD3D11(graphicsDeviceOptions, swapchainDescription);
+        graphicsDevice = selectedGraphicsBackend switch {
+            GraphicsBackend.Direct3D11 => GraphicsDevice.CreateD3D11(graphicsDeviceOptions, swapchainDescription),
+            GraphicsBackend.Vulkan => GraphicsDevice.CreateVulkan(graphicsDeviceOptions, swapchainDescription),
+            _ => throw new ArgumentException(
+                $"Unsupported graphics backend: {selectedGraphicsBackend}. " +
+                "Use --d3d11 or --vulkan. (OpenGL requires OpenGLPlatformInfo, not SwapchainDescription)")
+        };
         Console.WriteLine($"Graphics backend: {graphicsDevice.BackendType}");
         appWindow.Title = $"SilkyNvg Veldrid Backend Example ({graphicsDevice.BackendType})";
 
@@ -140,11 +147,27 @@ public static class Program
         graphicsDevice.MainSwapchain.Resize((uint)newSize.X, (uint)newSize.Y);
     }
 
-    public static void Main()
+    public static void Main(string[] args)
     {
+        // Parse command-line backend selection: --d3d11, --vulkan, --opengl
+        selectedGraphicsBackend = GraphicsBackend.Direct3D11; // default
+        foreach (string arg in args) {
+            switch (arg.ToLowerInvariant()) {
+                case "--d3d11":
+                case "--d3d":
+                    selectedGraphicsBackend = GraphicsBackend.Direct3D11;
+                    break;
+                case "--vulkan":
+                case "--vk":
+                    selectedGraphicsBackend = GraphicsBackend.Vulkan;
+                    break;
+            }
+        }
+        Console.WriteLine($"Selected backend: {selectedGraphicsBackend}");
+
         WindowOptions windowOptions = WindowOptions.Default;
         windowOptions.Size = new Vector2D<int>(WINDOW_WIDTH, WINDOW_HEIGHT);
-        windowOptions.Title = "SilkyNvg Veldrid Backend Example";
+        windowOptions.Title = $"SilkyNvg Veldrid Backend Example ({selectedGraphicsBackend})";
         windowOptions.VSync = true;
         windowOptions.PreferredDepthBufferBits = 24;
         windowOptions.PreferredStencilBufferBits = 8;

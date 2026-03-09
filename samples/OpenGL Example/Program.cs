@@ -162,7 +162,7 @@ namespace OpenGL_Example
             windowOptions.FramesPerSecond = -1;
             windowOptions.ShouldSwapAutomatically = true;
             windowOptions.Size = new Vector2D<int>(1000, 600);
-            windowOptions.Title = "SilkyNvg";
+            windowOptions.Title = "SilkyNvg OpenGL Reference Example";
             windowOptions.VSync = false;
             windowOptions.PreferredDepthBufferBits = 24;
             windowOptions.PreferredStencilBufferBits = 8;

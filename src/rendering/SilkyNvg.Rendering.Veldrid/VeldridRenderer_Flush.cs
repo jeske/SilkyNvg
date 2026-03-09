@@ -32,7 +32,9 @@ namespace SilkyNvg.Rendering.Veldrid
             var commandList = _activeRenderCommandList;
 
             // Update view size uniform (use Vector4 for proper 16-byte alignment)
-            var viewSizeData = new Vector4(_viewportSize.Width, _viewportSize.Height, 0, 0);
+            // viewSize.z = Y direction multiplier: +1.0 for OpenGL/D3D11 (Y-up), -1.0 for Vulkan (Y-down)
+            float clipSpaceYMultiplier = _graphicsDevice.IsClipSpaceYInverted ? -1.0f : 1.0f;
+            var viewSizeData = new Vector4(_viewportSize.Width, _viewportSize.Height, clipSpaceYMultiplier, 0);
             _graphicsDevice.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
 
             // Resize vertex buffer if needed

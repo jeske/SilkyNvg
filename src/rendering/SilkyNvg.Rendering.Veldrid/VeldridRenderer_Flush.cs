@@ -37,17 +37,8 @@ namespace SilkyNvg.Rendering.Veldrid
             var viewSizeData = new Vector4(_viewportSize.Width, _viewportSize.Height, clipSpaceYMultiplier, 0);
             _graphicsDevice.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
 
-            // Resize vertex buffer if needed
-            uint requiredVertexBufferSize = (uint)(_vertexBatchCount * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
-            if (_vertexBuffer!.SizeInBytes < requiredVertexBufferSize)
-            {
-                _vertexBuffer.Dispose();
-                _vertexBuffer = _graphicsDevice.ResourceFactory.CreateBuffer(new BufferDescription(
-                    requiredVertexBufferSize * 2,
-                    BufferUsage.VertexBuffer | BufferUsage.Dynamic));
-            }
-
             // Upload vertices (zero-alloc: pass span slice directly, no ToArray() allocation)
+            // GPU buffer is already sized correctly by EnsureVertexCapacity() during batching
             _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, _vertexBatchArray.AsSpan(0, _vertexBatchCount));
 
             // Set shared vertex buffer (same layout for both pipelines)

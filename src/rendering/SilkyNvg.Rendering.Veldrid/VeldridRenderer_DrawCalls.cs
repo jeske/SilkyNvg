@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using SilkyNvg.Blending;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,6 +13,7 @@ namespace SilkyNvg.Rendering.Veldrid
         /// <summary>
         /// Ensures the vertex batch array has capacity for n additional vertices.
         /// Uses 1.5x growth strategy (same as OpenGL backend).
+        /// When the CPU array grows, the GPU buffer is resized to match.
         /// </summary>
         private void EnsureVertexCapacity(int additionalVertexCount)
         {
@@ -19,7 +21,24 @@ namespace SilkyNvg.Rendering.Veldrid
             if (requiredCapacity > _vertexBatchArray.Length) {
                 int newCapacity = Math.Max(requiredCapacity, 4096) + _vertexBatchArray.Length / 2;
                 Array.Resize(ref _vertexBatchArray, newCapacity);
+                
+                // Resize GPU buffer to match CPU array capacity (unified sizing)
+                ResizeGpuVertexBuffer(newCapacity);
             }
+        }
+
+        /// <summary>
+        /// Resizes the GPU vertex buffer to match the given capacity (in vertex count).
+        /// Called when the CPU array grows to keep GPU and CPU buffers synchronized.
+        /// </summary>
+        private void ResizeGpuVertexBuffer(int vertexCapacity)
+        {
+            uint newBufferSizeBytes = (uint)(vertexCapacity * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
+            
+            _vertexBuffer?.Dispose();
+            _vertexBuffer = _graphicsDevice.ResourceFactory.CreateBuffer(new BufferDescription(
+                newBufferSizeBytes,
+                BufferUsage.VertexBuffer | BufferUsage.Dynamic));
         }
 
         /// <summary>

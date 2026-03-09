@@ -38,9 +38,11 @@
     <None Include="Scripts\**" />
     <Compile Remove="Shaders\Source\**" />
     <None Include="Shaders\Source\**" />
+    <!-- Disable SDK auto-discovery for Shaders/Compiled/ to avoid duplicates -->
+    <Compile Remove="Shaders\Compiled\**" />
   </ItemGroup>
 
-  <!-- Explicitly include generated shader files so MSBuild always sees them -->
+  <!-- Explicitly include generated shader files (needed for first-time builds before files exist) -->
   <ItemGroup>
     <Compile Include="Shaders\Compiled\SolidFillShaders.generated.cs" />
     <Compile Include="Shaders\Compiled\TexturedShaders.generated.cs" />

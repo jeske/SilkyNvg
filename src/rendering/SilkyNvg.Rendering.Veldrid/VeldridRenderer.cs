@@ -12,11 +12,44 @@ namespace SilkyNvg.Rendering.Veldrid
     /// Split across partial files:
     ///   VeldridRenderer.cs          - Core fields, constructor, lifecycle
     ///   VeldridRenderer_Pipelines.cs - Pipeline/shader/buffer creation
-    ///   VeldridRenderer_Shaders.cs   - GLSL shader source strings
     ///   VeldridRenderer_DrawCalls.cs - Fill(), Stroke(), Triangles() batching
-    ///   VeldridRenderer_Flush.cs     - Flush() draw dispatch + DrawTestTriangle()
+    ///   VeldridRenderer_Flush.cs     - Flush() draw dispatch
     ///   TextureRegistry.cs           - Texture CRUD + ResourceSet caching (separate class)
+    ///   Shaders/                     - GLSL source + C# struct layouts per shader
     /// </summary>
+    ///
+    /// <remarks>
+    /// ╔══════════════════════════════════════════════════════════════════════════╗
+    /// ║  CRITICAL: graphicsDevice.UpdateBuffer() vs commandList.UpdateBuffer()  ║
+    /// ╚══════════════════════════════════════════════════════════════════════════╝
+    ///
+    /// Veldrid has TWO ways to update a GPU buffer. They look identical but have
+    /// completely different timing semantics. Using the wrong one causes silent
+    /// data corruption that is extremely hard to diagnose.
+    ///
+    /// ┌─────────────────────────────────────────────────────────────────────────┐
+    /// │  _graphicsDevice.UpdateBuffer(buffer, offset, data)                    │
+    /// │                                                                         │
+    /// │  IMMEDIATE / GLOBAL — executes NOW, before any command list.            │
+    /// │  The GPU sees the new data immediately. If you call this twice on the   │
+    /// │  same buffer before submitting the command list, the GPU only sees the  │
+    /// │  LAST value for ALL draw calls that reference this buffer.              │
+    /// │                                                                         │
+    /// │  ✅ USE FOR: One-time-per-frame data (viewSize, vertex upload)          │
+    /// │  ❌ NEVER FOR: Per-draw-call uniforms (paint params, textures)          │
+    /// └─────────────────────────────────────────────────────────────────────────┘
+    ///
+    /// ┌─────────────────────────────────────────────────────────────────────────┐
+    /// │  commandList.UpdateBuffer(buffer, offset, data)                         │
+    /// │                                                                         │
+    /// │  SEQUENCED / PER-DRAW — recorded into the command list at this point.   │
+    /// │  The GPU sees the data AT THIS POSITION in the command stream.          │
+    /// │  Multiple updates to the same buffer are properly sequenced with draws. │
+    /// │                                                                         │
+    /// │  ✅ USE FOR: Per-draw-call uniforms (paint params that change each draw)│
+    /// │  ❌ AVOID FOR: Large uploads (vertex buffers) — less efficient          │
+    /// └─────────────────────────────────────────────────────────────────────────┘
+    /// </remarks>
     public sealed partial class VeldridRenderer : INvgRenderer
     {
         private readonly GraphicsDevice _graphicsDevice;
@@ -77,7 +110,8 @@ namespace SilkyNvg.Rendering.Veldrid
 
         public bool Create()
         {
-            if (_isInitialized) {
+            if (_isInitialized)
+            {
                 return true;
             }
 
@@ -141,8 +175,10 @@ namespace SilkyNvg.Rendering.Veldrid
             _solidFillPipeline?.Dispose();
             _viewSizeOnlyResourceSet?.Dispose();
             _viewSizeOnlyResourceLayout?.Dispose();
-            if (_vertexColorShaders != null) {
-                foreach (var shader in _vertexColorShaders) {
+            if (_vertexColorShaders != null)
+            {
+                foreach (var shader in _vertexColorShaders)
+                {
                     shader.Dispose();
                 }
             }
@@ -151,8 +187,10 @@ namespace SilkyNvg.Rendering.Veldrid
             _texturedPipeline?.Dispose();
             _texturedResourceLayout?.Dispose();
             _fontAtlasSampler?.Dispose();
-            if (_texturedShaders != null) {
-                foreach (var shader in _texturedShaders) {
+            if (_texturedShaders != null)
+            {
+                foreach (var shader in _texturedShaders)
+                {
                     shader.Dispose();
                 }
             }
@@ -162,8 +200,10 @@ namespace SilkyNvg.Rendering.Veldrid
             _gradientResourceSet?.Dispose();
             _gradientResourceLayout?.Dispose();
             _paintUniformBuffer?.Dispose();
-            if (_gradientShaders != null) {
-                foreach (var shader in _gradientShaders) {
+            if (_gradientShaders != null)
+            {
+                foreach (var shader in _gradientShaders)
+                {
                     shader.Dispose();
                 }
             }
@@ -172,12 +212,15 @@ namespace SilkyNvg.Rendering.Veldrid
             _imagePatternPipeline?.Dispose();
             _imagePatternResourceLayout?.Dispose();
             _imagePatternSampler?.Dispose();
-            if (_imagePatternShaders != null) {
-                foreach (var shader in _imagePatternShaders) {
+            if (_imagePatternShaders != null)
+            {
+                foreach (var shader in _imagePatternShaders)
+                {
                     shader.Dispose();
                 }
             }
-            foreach (var kvp in _imagePatternResourceSetCache) {
+            foreach (var kvp in _imagePatternResourceSetCache)
+            {
                 kvp.Value.Dispose();
             }
             _imagePatternResourceSetCache.Clear();

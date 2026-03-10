@@ -51,15 +51,23 @@
     <Compile Include="Shaders\Compiled\ImagePatternShaders.generated.cs" />
   </ItemGroup>
 
-  <!-- Run shader compiler before build to generate .generated.cs files
-       Uses Exec instead of ProjectReference to avoid cross TFM dependency issues
-       TEMPORARILY COMMENTED OUT: Cross TFM issues in Release mode -->
-  <!--
-  <Target Name="CompileShadersBeforeBuild" BeforeTargets="BeforeBuild">
-    <Message Text="Running shader compiler to generate precompiled shaders..." Importance="high" />
-    <Exec Command="dotnet run - -project &quot;$(MSBuildThisFileDirectory)Scripts\CompileShaders.csproj&quot; - -framework net9.0"
+  <!-- Run shader compiler before build to generate .generated.cs files.
+       Completely isolated from the MSBuild graph: forces the compiler tool to net9.0,
+       so it works regardless of the parent build's TFM (desktop, android, etc.).
+       The CompileShaders.csproj targets net9.0 only and uses Veldrid.SPIRV (desktop native lib). -->
+  <Target Name="CompileShadersBeforeBuild" BeforeTargets="CoreCompile">
+    <Message Text="Running shader compiler (isolated net9.0 exec) to generate precompiled shaders..." Importance="high" />
+    <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)Scripts\CompileShaders.csproj&quot; --framework net9.0"
           WorkingDirectory="$(MSBuildThisFileDirectory)" />
   </Target>
-  -->
+
+  <!-- Clean target: remove generated shader files when 'dotnet clean' is run -->
+  <Target Name="CleanGeneratedShaders" AfterTargets="Clean">
+    <Delete Files="$(MSBuildThisFileDirectory)Shaders\Compiled\SolidFillShaders.generated.cs" />
+    <Delete Files="$(MSBuildThisFileDirectory)Shaders\Compiled\TexturedShaders.generated.cs" />
+    <Delete Files="$(MSBuildThisFileDirectory)Shaders\Compiled\GradientShaders.generated.cs" />
+    <Delete Files="$(MSBuildThisFileDirectory)Shaders\Compiled\ImagePatternShaders.generated.cs" />
+    <Message Text="Cleaned generated shader files from Shaders/Compiled/" Importance="high" />
+  </Target>
 
 </Project>

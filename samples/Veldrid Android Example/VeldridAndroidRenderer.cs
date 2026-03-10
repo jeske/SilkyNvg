@@ -216,7 +216,7 @@ public class VeldridAndroidRenderer
             // Begin GPU commands
             renderCommandList.Begin();
             renderCommandList.SetFramebuffer(vulkanGraphicsDevice.SwapchainFramebuffer);
-            renderCommandList.ClearColorTarget(0, new RgbaFloat(0.0f, 0.0f, 0.0f, 1.0f)); // Black letterbox bars
+            renderCommandList.ClearColorTarget(0, new RgbaFloat(0.3f, 0.3f, 0.32f, 1.0f)); // Match desktop example background
             
             // Set viewport to center the content
             renderCommandList.SetViewport(0, new Viewport(viewportX, viewportY, scaledWidth, scaledHeight, 0f, 1f));

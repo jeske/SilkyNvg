@@ -1,3 +1,7 @@
+// Veldrid backend implementation (C)opyright 2026 by David Jeske <davidj@gmail.com>
+//   co-development with Claude Sonnet 4.5 and Claude Opus 4.6
+// Released under the MIT License.
+
 using SilkyNvg.Images;
 using System;
 using System.Collections.Generic;
@@ -158,11 +162,12 @@ namespace SilkyNvg.Rendering.Veldrid
         public void Cancel()
         {
             // Track peak vertex usage for adaptive downsizing
-            if (_vertexBatchCount > _peakVertexCountSinceLastResize) {
+            if (_vertexBatchCount > _peakVertexCountSinceLastResize)
+            {
                 _peakVertexCountSinceLastResize = _vertexBatchCount;
             }
             _flushesSinceLastBufferResize++;
-            
+
             _vertexBatchCount = 0;
             _drawCalls.Clear();
         }

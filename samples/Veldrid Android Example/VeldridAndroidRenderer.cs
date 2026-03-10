@@ -1,3 +1,7 @@
+// Android Veldrid example (C)opyuright 2026 by David Jeske <davidj@gmail.com>
+// with assistance from Claude Sonnet 4.5 and Claude Opus 4.6
+// Released under the MIT License.
+
 #nullable enable
 using System;
 using System.Diagnostics;
@@ -46,7 +50,8 @@ public class VeldridAndroidRenderer
     /// </summary>
     public void InitializeFromSurface(Android.Views.Surface androidSurface, Context androidContext)
     {
-        if (isDisposed) {
+        if (isDisposed)
+        {
             throw new ObjectDisposedException(nameof(VeldridAndroidRenderer),
                 "Cannot initialize — renderer has already been disposed. Create a new instance.");
         }
@@ -54,7 +59,8 @@ public class VeldridAndroidRenderer
         // Get the Java Surface jobject handle — ppy.Veldrid expects the Java Surface reference,
         // NOT an ANativeWindow pointer. It handles the native window conversion internally.
         IntPtr javaSurfaceHandle = androidSurface.Handle;
-        if (javaSurfaceHandle == IntPtr.Zero) {
+        if (javaSurfaceHandle == IntPtr.Zero)
+        {
             throw new InvalidOperationException(
                 "Android Surface.Handle is null. The Surface may not be valid.");
         }
@@ -63,7 +69,8 @@ public class VeldridAndroidRenderer
         IntPtr nativeWindowForSizing = ANativeWindow_fromSurface(
             Java.Interop.JniEnvironment.EnvironmentPointer,
             javaSurfaceHandle);
-        if (nativeWindowForSizing != IntPtr.Zero) {
+        if (nativeWindowForSizing != IntPtr.Zero)
+        {
             surfacePixelWidth = (uint)ANativeWindow_getWidth(nativeWindowForSizing);
             surfacePixelHeight = (uint)ANativeWindow_getHeight(nativeWindowForSizing);
             ANativeWindow_release(nativeWindowForSizing);
@@ -71,7 +78,8 @@ public class VeldridAndroidRenderer
         Log.Info(LOG_TAG, $"Surface size: {surfacePixelWidth}x{surfacePixelHeight}");
 
         // Create Veldrid GraphicsDevice with Vulkan backend
-        GraphicsDeviceOptions vulkanDeviceOptions = new GraphicsDeviceOptions {
+        GraphicsDeviceOptions vulkanDeviceOptions = new GraphicsDeviceOptions
+        {
             PreferDepthRangeZeroToOne = true,
             SyncToVerticalBlank = false,  // Disable vsync for max performance
             // 8-bit stencil required for non-convex path fill (stencil-then-cover)
@@ -122,13 +130,15 @@ public class VeldridAndroidRenderer
     /// </summary>
     public void StartRenderLoop(Func<float> getTouchMouseX, Func<float> getTouchMouseY)
     {
-        if (vulkanGraphicsDevice == null) {
+        if (vulkanGraphicsDevice == null)
+        {
             throw new InvalidOperationException(
                 "Cannot start render loop — InitializeFromSurface() has not been called yet.");
         }
 
         isRenderLoopRunning = true;
-        renderLoopThread = new Thread(() => RenderLoopBody(getTouchMouseX, getTouchMouseY)) {
+        renderLoopThread = new Thread(() => RenderLoopBody(getTouchMouseX, getTouchMouseY))
+        {
             Name = "NvgVeldridRenderThread",
             IsBackground = true,
             Priority = ThreadPriority.Highest  // Prioritize render thread
@@ -153,7 +163,8 @@ public class VeldridAndroidRenderer
     /// </summary>
     public void StopAndDispose()
     {
-        if (isDisposed) {
+        if (isDisposed)
+        {
             return;
         }
         isDisposed = true;
@@ -181,10 +192,12 @@ public class VeldridAndroidRenderer
     {
         Log.Info(LOG_TAG, "Render loop started");
 
-        while (isRenderLoopRunning) {
+        while (isRenderLoopRunning)
+        {
             if (vulkanGraphicsDevice == null || renderCommandList == null ||
                 nvgContext == null || nvgDemo == null || frameTimer == null ||
-                frameTimeGraph == null || cpuTimeGraph == null) {
+                frameTimeGraph == null || cpuTimeGraph == null)
+            {
                 break;
             }
 
@@ -207,7 +220,7 @@ public class VeldridAndroidRenderer
             float scaleX = surfacePixelWidth / DESKTOP_DEMO_WIDTH;
             float scaleY = surfacePixelHeight / DESKTOP_DEMO_HEIGHT;
             float uniformScale = Math.Min(scaleX, scaleY);
-            
+
             uint scaledWidth = (uint)(DESKTOP_DEMO_WIDTH * uniformScale);
             uint scaledHeight = (uint)(DESKTOP_DEMO_HEIGHT * uniformScale);
             uint viewportX = (surfacePixelWidth - scaledWidth) / 2;
@@ -217,11 +230,11 @@ public class VeldridAndroidRenderer
             renderCommandList.Begin();
             renderCommandList.SetFramebuffer(vulkanGraphicsDevice.SwapchainFramebuffer);
             renderCommandList.ClearColorTarget(0, new RgbaFloat(0.3f, 0.3f, 0.32f, 1.0f)); // Match desktop example background
-            
+
             // Set viewport to center the content
             renderCommandList.SetViewport(0, new Viewport(viewportX, viewportY, scaledWidth, scaledHeight, 0f, 1f));
             renderCommandList.SetScissorRect(0, viewportX, viewportY, scaledWidth, scaledHeight);
-            
+
             renderCommandList.ClearDepthStencil(0f, 0);
 
             // NVG frame — fully qualify SizeF to avoid ambiguity with Android.Util.SizeF

@@ -117,9 +117,7 @@ The [Veldrid renderer](src/rendering/SilkyNvg.Rendering.Veldrid) uses [ppy.Veldr
 | Windows  | Vulkan      | ✅ Verified                                                     |
 | Android  | Vulkan      | ✅ Verified (Samsung S22 Ultra, Demo ~10ms/frame Release Build) |
 
-**Shader Precompilation:** GLSL shaders are compiled to SPIR-V at build time by `Scripts/CompileShaders.csproj` (requires `ppy.Veldrid.SPIRV` on the build host). The generated `.cs` files embed the bytecode directly, so no runtime SPIRV dependency is needed on target devices.
-
-**Important for mobile builds:** Run a desktop build first (`dotnet build` on Windows) to generate the precompiled shader files before attempting a mobile build. The Android build skips shader compilation since it cannot run the SPIRV compiler.
+**Shader Precompilation:** GLSL shaders are compiled to SPIR-V at build time by `Scripts/CompileShaders.csproj`. The shader compiler runs automatically during any build (desktop or mobile) using an isolated `dotnet run --framework net9.0` exec, so it works regardless of the target platform. The generated `.cs` files embed the bytecode directly, so no runtime SPIRV dependency is needed on target devices.
 
 **Usage note:** Unlike the OpenGL renderer, the Veldrid renderer requires you to call `VeldridRenderer.SetActiveCommandList(commandList)` at least once before `Nvg.BeginFrame()`, so it knows which `CommandList` to record draw commands into.
 

@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using Veldrid;
 
@@ -49,10 +50,33 @@ namespace SilkyNvg.Rendering.Veldrid
             var factory = _graphicsDevice.ResourceFactory;
 
             // Use precompiled shaders (no runtime compilation needed)
-            _vertexColorShaders = SolidFillShaders.CreateShaders(factory);
-            _texturedShaders = TexturedShaders.CreateShaders(factory);
-            _gradientShaders = GradientShaders.CreateShaders(factory);
-            _imagePatternShaders = ImagePatternShaders.CreateShaders(factory);
+            try {
+                _vertexColorShaders = SolidFillShaders.CreateShaders(factory);
+                Console.WriteLine($"[VELDRID] Created SolidFill shaders for {factory.BackendType}");
+            } catch (Exception ex) {
+                throw new Exception($"Failed to create SolidFill shaders for {factory.BackendType}: {ex.Message}", ex);
+            }
+            
+            try {
+                _texturedShaders = TexturedShaders.CreateShaders(factory);
+                Console.WriteLine($"[VELDRID] Created Textured shaders for {factory.BackendType}");
+            } catch (Exception ex) {
+                throw new Exception($"Failed to create Textured shaders for {factory.BackendType}: {ex.Message}", ex);
+            }
+            
+            try {
+                _gradientShaders = GradientShaders.CreateShaders(factory);
+                Console.WriteLine($"[VELDRID] Created Gradient shaders for {factory.BackendType}");
+            } catch (Exception ex) {
+                throw new Exception($"Failed to create Gradient shaders for {factory.BackendType}: {ex.Message}", ex);
+            }
+            
+            try {
+                _imagePatternShaders = ImagePatternShaders.CreateShaders(factory);
+                Console.WriteLine($"[VELDRID] Created ImagePattern shaders for {factory.BackendType}");
+            } catch (Exception ex) {
+                throw new Exception($"Failed to create ImagePattern shaders for {factory.BackendType}: {ex.Message}", ex);
+            }
         }
 
         private void CreatePipeline()

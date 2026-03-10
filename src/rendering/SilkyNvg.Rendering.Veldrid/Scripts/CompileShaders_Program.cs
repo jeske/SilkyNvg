@@ -16,13 +16,13 @@ using Veldrid.SPIRV;
 // Configuration
 // ================================================================
 
-// When run from MSBuild, the working directory is the project directory
-// When run manually from project root, need to specify the backend directory
+// When run from MSBuild, the working directory is the Veldrid backend directory
+// When run manually, may need to specify the backend directory
 string veldridBackendDir = args.Length > 0
     ? args[0]
-    : Directory.Exists("Shaders")
-        ? "." // Running from project directory (MSBuild)
-        : "EngineSrc/Arcane.Client/SilkyNvg/src/rendering/SilkyNvg.Rendering.Veldrid"; // Running from repo root
+    : Directory.Exists("Shaders/Source")
+        ? "." // Running from Veldrid backend directory (MSBuild default)
+        : "src/rendering/SilkyNvg.Rendering.Veldrid"; // Running from SilkyNvg root
 
 string shaderSourceDir = Path.Combine(veldridBackendDir, "Shaders", "Source");
 string shaderCompiledDir = Path.Combine(veldridBackendDir, "Shaders", "Compiled");
@@ -119,6 +119,14 @@ foreach (var (className, fileStem) in shaderPairs)
 
         Console.WriteLine($"    {backendName}: vertex={vertexBytes.Length} bytes (entry={vertexEntry}), fragment={fragmentBytes.Length} bytes (entry={fragmentEntry})");
 
+        // CRITICAL VALIDATION: For OpenGL/GLES, verify uniform block names are preserved from source GLSL
+        // Older SPIRV-Cross versions mangle names to _31_33, _RESERVED_IDENTIFIER_FIXUP_31_33, etc.
+        // This causes Veldrid's OpenGL backend to fail UBO binding via glGetUniformBlockIndex.
+        if (backendName == "OpenGL" || backendName == "OpenGLES") {
+            ValidateUniformBlockNames(crossResult.VertexShader, crossResult.FragmentShader,
+                vertexGlslSource, fragmentGlslSource, backendName, fileStem);
+        }
+
         backendResults.Add((backendName, enumValue, vertexBytes, fragmentBytes, vertexEntry, fragmentEntry));
     }
 
@@ -136,6 +144,22 @@ foreach (var (className, fileStem) in shaderPairs)
     csharpBuilder.AppendLine("// To regenerate, run from the Veldrid backend directory:");
     csharpBuilder.AppendLine("//   dotnet Scripts/CompileShaders.cs");
     csharpBuilder.AppendLine("// ============================================================================");
+    csharpBuilder.AppendLine();
+    csharpBuilder.AppendLine("/* ============================================================================");
+    csharpBuilder.AppendLine($"   SOURCE GLSL VERTEX SHADER ({fileStem}.vert.glsl):");
+    csharpBuilder.AppendLine("   ============================================================================");
+    foreach (string line in vertexGlslSource.Split('\n')) {
+        csharpBuilder.AppendLine($"   {line.TrimEnd()}");
+    }
+    csharpBuilder.AppendLine("   ============================================================================ */");
+    csharpBuilder.AppendLine();
+    csharpBuilder.AppendLine("/* ============================================================================");
+    csharpBuilder.AppendLine($"   SOURCE GLSL FRAGMENT SHADER ({fileStem}.frag.glsl):");
+    csharpBuilder.AppendLine("   ============================================================================");
+    foreach (string line in fragmentGlslSource.Split('\n')) {
+        csharpBuilder.AppendLine($"   {line.TrimEnd()}");
+    }
+    csharpBuilder.AppendLine("   ============================================================================ */");
     csharpBuilder.AppendLine();
     csharpBuilder.AppendLine("using System;");
     csharpBuilder.AppendLine("using Veldrid;");
@@ -169,10 +193,23 @@ foreach (var (className, fileStem) in shaderPairs)
     {
         csharpBuilder.AppendLine($"        // === {backendName} ===");
         csharpBuilder.AppendLine();
-        EmitByteArray(csharpBuilder, $"{backendName}VertexBytes", vertexBytes);
-        csharpBuilder.AppendLine();
-        EmitByteArray(csharpBuilder, $"{backendName}FragmentBytes", fragmentBytes);
-        csharpBuilder.AppendLine();
+        
+        // For GLSL/ESSL backends, use string literals (easily editable for debugging)
+        // For binary backends (Vulkan SPIRV, D3D11 HLSL bytecode, Metal), use byte arrays
+        if (backendName == "OpenGL" || backendName == "OpenGLES") {
+            string vertexSource = Encoding.UTF8.GetString(vertexBytes);
+            string fragmentSource = Encoding.UTF8.GetString(fragmentBytes);
+            
+            EmitStringLiteral(csharpBuilder, $"{backendName}VertexBytes", vertexSource);
+            csharpBuilder.AppendLine();
+            EmitStringLiteral(csharpBuilder, $"{backendName}FragmentBytes", fragmentSource);
+            csharpBuilder.AppendLine();
+        } else {
+            EmitByteArray(csharpBuilder, $"{backendName}VertexBytes", vertexBytes);
+            csharpBuilder.AppendLine();
+            EmitByteArray(csharpBuilder, $"{backendName}FragmentBytes", fragmentBytes);
+            csharpBuilder.AppendLine();
+        }
     }
 
     csharpBuilder.AppendLine("    }");
@@ -211,4 +248,93 @@ static void EmitByteArray(StringBuilder builder, string fieldName, byte[] byteDa
 
     builder.AppendLine();
     builder.AppendLine("        };");
+}
+
+// ================================================================
+// Helper: emit a string literal as a C# static readonly byte[] field (UTF-8 encoded)
+// ================================================================
+
+static void EmitStringLiteral(StringBuilder builder, string fieldName, string shaderSource)
+{
+    builder.AppendLine($"        private static readonly byte[] {fieldName} = System.Text.Encoding.UTF8.GetBytes(@\"");
+    
+    // Escape any quotes in the shader source
+    string escapedSource = shaderSource.Replace("\"", "\"\"");
+    builder.Append(escapedSource);
+    
+    builder.AppendLine("\");");
+}
+
+// ================================================================
+// Validation: Verify uniform block names are preserved in OpenGL/GLES output
+// ================================================================
+
+static void ValidateUniformBlockNames(string vertexGlsl, string fragmentGlsl, 
+    string sourceVertexGlsl, string sourceFragmentGlsl, string backendName, string shaderName)
+{
+    // Extract uniform block names from source GLSL (Vulkan GLSL 450 syntax)
+    // Pattern: layout(set = N, binding = M) uniform BlockName {
+    var sourceBlockNames = new List<string>();
+    var sourceUniformPattern = new System.Text.RegularExpressions.Regex(
+        @"layout\s*\(\s*set\s*=\s*\d+\s*,\s*binding\s*=\s*\d+\s*\)\s*uniform\s+(\w+)\s*\{");
+    
+    foreach (System.Text.RegularExpressions.Match match in sourceUniformPattern.Matches(sourceVertexGlsl)) {
+        sourceBlockNames.Add(match.Groups[1].Value);
+    }
+    foreach (System.Text.RegularExpressions.Match match in sourceUniformPattern.Matches(sourceFragmentGlsl)) {
+        sourceBlockNames.Add(match.Groups[1].Value);
+    }
+
+    if (sourceBlockNames.Count == 0) {
+        return; // No uniform blocks to validate
+    }
+
+    // Extract uniform block names from cross-compiled GLSL (OpenGL 330/ES 300 syntax)
+    // Pattern: layout(std140) uniform BlockName {
+    var crossCompiledBlockNames = new List<string>();
+    var crossCompiledUniformPattern = new System.Text.RegularExpressions.Regex(
+        @"layout\s*\(\s*std140\s*\)\s*uniform\s+(\w+)\s*\{");
+    
+    foreach (System.Text.RegularExpressions.Match match in crossCompiledUniformPattern.Matches(vertexGlsl)) {
+        crossCompiledBlockNames.Add(match.Groups[1].Value);
+    }
+    foreach (System.Text.RegularExpressions.Match match in crossCompiledUniformPattern.Matches(fragmentGlsl)) {
+        crossCompiledBlockNames.Add(match.Groups[1].Value);
+    }
+
+    // Verify all source block names are preserved in cross-compiled output
+    var missingBlockNames = new List<string>();
+    foreach (string sourceBlockName in sourceBlockNames) {
+        if (!crossCompiledBlockNames.Contains(sourceBlockName)) {
+            missingBlockNames.Add(sourceBlockName);
+        }
+    }
+
+    if (missingBlockNames.Count > 0) {
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("╔═══════════════════════════════════════════════════════════════════════════════╗");
+        Console.Error.WriteLine("║ CRITICAL ERROR: Uniform block names were mangled during SPIRV-Cross           ║");
+        Console.Error.WriteLine("╚═══════════════════════════════════════════════════════════════════════════════╝");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine($"Shader: {shaderName} ({backendName})");
+        Console.Error.WriteLine($"Expected uniform blocks: {string.Join(", ", sourceBlockNames)}");
+        Console.Error.WriteLine($"Generated uniform blocks: {string.Join(", ", crossCompiledBlockNames)}");
+        Console.Error.WriteLine($"Missing blocks: {string.Join(", ", missingBlockNames)}");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("This will cause OpenGL rendering to fail because Veldrid's OpenGL backend uses");
+        Console.Error.WriteLine("glGetUniformBlockIndex(program, name) to bind UBOs, and the mangled names won't match.");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("ROOT CAUSE:");
+        Console.Error.WriteLine("  Your Veldrid.SPIRV package uses an outdated SPIRV-Cross version that mangles");
+        Console.Error.WriteLine("  uniform block names during cross-compilation. This is a known issue:");
+        Console.Error.WriteLine("  https://github.com/veldrid/veldrid-spirv/issues/8");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("SOLUTION:");
+        Console.Error.WriteLine("  1. Use ppy.Veldrid.SPIRV (the actively maintained fork) instead of upstream");
+        Console.Error.WriteLine("  2. Ensure you have the latest version with the SPIRV-Cross fix");
+        Console.Error.WriteLine("  3. If using a local build, verify the native library (libveldrid-spirv.dll)");
+        Console.Error.WriteLine("     is from a recent build with the updated SPIRV-Cross submodule");
+        Console.Error.WriteLine();
+        Environment.Exit(1);
+    }
 }

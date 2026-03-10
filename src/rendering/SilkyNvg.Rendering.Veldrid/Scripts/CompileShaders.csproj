@@ -14,8 +14,16 @@
 
   <ItemGroup>
     <PackageReference Include="ppy.Veldrid" Version="4.9.69-ga405fe8484" />
-    <PackageReference Include="ppy.Veldrid.SPIRV" Version="1.0.15-gfbb03d21c2" />
+    <ProjectReference Include="C:\PROJECTS\ppy-veldrid-spirv\src\Veldrid.SPIRV\Veldrid.SPIRV.csproj" />
   </ItemGroup>
+
+  <!-- Copy native library from Veldrid.SPIRV project after build -->
+  <Target Name="CopyNativeLibrary" AfterTargets="Build" BeforeTargets="RunShaderCompiler">
+    <Copy SourceFiles="C:\PROJECTS\ppy-veldrid-spirv\build\Debug\win-x64\Debug\libveldrid-spirv.dll"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="false"
+          Condition="Exists('C:\PROJECTS\ppy-veldrid-spirv\build\Debug\win-x64\Debug\libveldrid-spirv.dll')" />
+  </Target>
 
   <!-- After building the compiler, run it to generate shader files -->
   <Target Name="RunShaderCompiler" AfterTargets="Build">

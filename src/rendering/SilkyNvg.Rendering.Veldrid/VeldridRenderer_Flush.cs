@@ -44,10 +44,13 @@ namespace SilkyNvg.Rendering.Veldrid
             // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);
 
-            // Default scissor to full framebuffer (scissor test is always enabled in pipelines)
-            // IMPORTANT: Use framebuffer dimensions, not NVG viewport — scissor rect is in pixel coordinates
+            // Set viewport explicitly — OpenGL's default viewport may be stale after Veldrid's context takeover
             uint fullFramebufferWidth = _graphicsDevice.SwapchainFramebuffer.Width;
             uint fullFramebufferHeight = _graphicsDevice.SwapchainFramebuffer.Height;
+            commandList.SetViewport(0, new Viewport(0, 0, fullFramebufferWidth, fullFramebufferHeight, 0, 1));
+
+            // Default scissor to full framebuffer (scissor test is always enabled in pipelines)
+            // IMPORTANT: Use framebuffer dimensions, not NVG viewport — scissor rect is in pixel coordinates
             commandList.SetScissorRect(0, 0, 0, fullFramebufferWidth, fullFramebufferHeight);
 
             // Scale factor from NVG coordinates to framebuffer pixels

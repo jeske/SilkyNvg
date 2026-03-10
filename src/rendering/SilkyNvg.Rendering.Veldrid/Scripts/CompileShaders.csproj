@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- This is a build-time tool, not part of the runtime project -->
+    <IsPackable>false</IsPackable>
+    <!-- Suppress Mono runtime restore (not needed for build-time tool) -->
+    <UseMonoRuntime>false</UseMonoRuntime>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ppy.Veldrid" Version="4.9.69-ga405fe8484" />
+    <PackageReference Include="ppy.Veldrid.SPIRV" Version="1.0.15-gfbb03d21c2" />
+  </ItemGroup>
+
+  <!-- After building the compiler, run it to generate shader files -->
+  <Target Name="RunShaderCompiler" AfterTargets="Build">
+    <Message Text="Running shader compiler to generate precompiled shaders..." Importance="high" />
+    <Exec Command="dotnet run --project $(MSBuildProjectFullPath) --no-build"
+          WorkingDirectory="$(MSBuildProjectDirectory)\.." />
+  </Target>
+
+</Project>

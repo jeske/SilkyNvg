@@ -1,9 +1,13 @@
 <Project>
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <!-- UseLegacyVeldrid: set to true to use upstream Veldrid 4.9.0 (abandoned March 2024).
+             Default (undefined/false): uses ppy.Veldrid fork (actively maintained, Android/iOS support).
+             Override this in a parent Directory.Build.props or pass -p:UseLegacyVeldrid=true on CLI. -->
+        <DefineConstants Condition="'$(UseLegacyVeldrid)' == 'true'">$(DefineConstants);USE_LEGACY_VELDRID</DefineConstants>
+        <!-- TargetFramework removed: each project now specifies its own TargetFrameworks (net9.0;net9.0-android) -->
         <Version>1.0.7</Version>
         <Authors>Matija Brown</Authors>
-        <Description>A port of memononen/nanovg to .NET5.0 primarilly centered around the Silk.NET framework.</Description>
+        <Description>A port of memononen/nanovg to .NET9.0 with multi-platform support (desktop + Android).</Description>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <RepositoryUrl>https://github.com/SilkyNvg/SilkyNvg</RepositoryUrl>
         <RepositoryType>git</RepositoryType>

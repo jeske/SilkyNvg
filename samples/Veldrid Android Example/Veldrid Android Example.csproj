@@ -33,11 +33,6 @@
     <ProjectReference Include="..\NvgExample\NvgExample.csproj" />
   </ItemGroup>
 
-  <!-- ppy.Veldrid fork: actively maintained, has Android/iOS support -->
-  <ItemGroup>
-    <PackageReference Include="ppy.Veldrid" Version="4.9.69-ga405fe8484" />
-  </ItemGroup>
-
   <!-- Link NvgExample assets (fonts + images) as AndroidAsset items.
        These are read at runtime via AssetManager, not copied to output. -->
   <ItemGroup>

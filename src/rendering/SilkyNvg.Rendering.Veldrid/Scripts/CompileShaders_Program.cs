@@ -52,6 +52,68 @@ var shaderPairs = new (string ClassName, string FileStem)[] {
 };
 
 // ================================================================
+// Incremental compilation: check if recompilation is needed
+// ================================================================
+
+bool needsRecompilation = false;
+DateTime newestInputTimestamp = DateTime.MinValue;
+DateTime oldestOutputTimestamp = DateTime.MaxValue;
+
+// Find newest input file timestamp
+foreach (var (_, fileStem) in shaderPairs) {
+    string vertexGlslPath = Path.Combine(shaderSourceDir, $"{fileStem}.vert.glsl");
+    string fragmentGlslPath = Path.Combine(shaderSourceDir, $"{fileStem}.frag.glsl");
+    
+    if (File.Exists(vertexGlslPath)) {
+        DateTime vertexTimestamp = File.GetLastWriteTimeUtc(vertexGlslPath);
+        if (vertexTimestamp > newestInputTimestamp) {
+            newestInputTimestamp = vertexTimestamp;
+        }
+    }
+    
+    if (File.Exists(fragmentGlslPath)) {
+        DateTime fragmentTimestamp = File.GetLastWriteTimeUtc(fragmentGlslPath);
+        if (fragmentTimestamp > newestInputTimestamp) {
+            newestInputTimestamp = fragmentTimestamp;
+        }
+    }
+}
+
+// Find oldest output file timestamp
+foreach (var (className, _) in shaderPairs) {
+    string outputPath = Path.Combine(shaderCompiledDir, $"{className}.generated.cs");
+    
+    if (!File.Exists(outputPath)) {
+        needsRecompilation = true;
+        Console.WriteLine($"  Output file missing: {className}.generated.cs");
+        break;
+    }
+    
+    DateTime outputTimestamp = File.GetLastWriteTimeUtc(outputPath);
+    if (outputTimestamp < oldestOutputTimestamp) {
+        oldestOutputTimestamp = outputTimestamp;
+    }
+}
+
+// Check if any input is newer than any output
+if (!needsRecompilation && newestInputTimestamp > oldestOutputTimestamp) {
+    needsRecompilation = true;
+    Console.WriteLine($"  Input files modified more recently than outputs");
+}
+
+if (!needsRecompilation) {
+    Console.WriteLine("  All shader outputs are up-to-date, skipping compilation");
+    Console.WriteLine($"  Newest input:  {newestInputTimestamp:yyyy-MM-dd HH:mm:ss} UTC");
+    Console.WriteLine($"  Oldest output: {oldestOutputTimestamp:yyyy-MM-dd HH:mm:ss} UTC");
+    Console.WriteLine("\n=== Shader compilation skipped (outputs up-to-date) ===");
+    return;
+}
+
+Console.WriteLine("  Recompilation needed:");
+Console.WriteLine($"    Newest input:  {newestInputTimestamp:yyyy-MM-dd HH:mm:ss} UTC");
+Console.WriteLine($"    Oldest output: {oldestOutputTimestamp:yyyy-MM-dd HH:mm:ss} UTC");
+
+// ================================================================
 // Cross-compilation targets and their options
 // ================================================================
 

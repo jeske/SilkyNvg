@@ -32,6 +32,15 @@ bld/
 msbuild.log
 msbuild.err
 msbuild.wrn
+NuGet.Config
 
 # Visual Studio 2015
 .vs/
+
+# Local NuGet config (machine-specific local feed paths)
+NuGet.Config
+
+# Local dev scripts (machine-specific paths)
+cmd/
+
+.claude/

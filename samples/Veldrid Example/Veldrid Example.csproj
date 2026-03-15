@@ -18,8 +18,12 @@
   </ItemGroup>
 
   <!-- ppy.Veldrid fork: actively maintained, Android/iOS support (default) -->
-  <ItemGroup Condition="'$(UseLegacyVeldrid)' != 'true'">
+  <!-- DEV_LOCAL_VELDRID env var: set to local Veldrid.csproj path to use local source instead of NuGet -->
+  <ItemGroup Condition="'$(UseLegacyVeldrid)' != 'true' and '$(DEV_LOCAL_VELDRID)' == ''">
     <PackageReference Include="ppy.Veldrid" Version="4.9.69-ga405fe8484" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLegacyVeldrid)' != 'true' and '$(DEV_LOCAL_VELDRID)' != ''">
+    <ProjectReference Include="$(DEV_LOCAL_VELDRID)" />
   </ItemGroup>
 
   <!-- Legacy upstream Veldrid 4.9.0 (abandoned March 2024, desktop-only) -->

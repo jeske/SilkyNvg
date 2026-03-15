@@ -131,15 +131,69 @@ namespace SilkyNvg.Rendering.Veldrid
 
             try
             {
-                CreateShaders();
-                CreatePipeline();
-                CreateBuffers();
+                Console.WriteLine($"VeldridRenderer.Create: Starting initialization for {_graphicsDevice.BackendType} backend");
+                
+                try
+                {
+                    Console.WriteLine("VeldridRenderer.Create: Creating shaders");
+                    CreateShaders();
+                }
+                catch (Exception shaderEx)
+                {
+                    Console.Error.WriteLine($"VeldridRenderer.Create: Shader creation failed: {shaderEx.GetType().Name}: {shaderEx.Message}");
+                    Console.Error.WriteLine($"Stack trace: {shaderEx.StackTrace}");
+                    throw new InvalidOperationException($"Failed to create shaders for {_graphicsDevice.BackendType} backend", shaderEx);
+                }
+                
+                try
+                {
+                    Console.WriteLine("VeldridRenderer.Create: Creating pipeline");
+                    CreatePipeline();
+                }
+                catch (Exception pipelineEx)
+                {
+                    Console.Error.WriteLine($"VeldridRenderer.Create: Pipeline creation failed: {pipelineEx.GetType().Name}: {pipelineEx.Message}");
+                    Console.Error.WriteLine($"Stack trace: {pipelineEx.StackTrace}");
+                    throw new InvalidOperationException($"Failed to create pipeline for {_graphicsDevice.BackendType} backend", pipelineEx);
+                }
+                
+                try
+                {
+                    Console.WriteLine("VeldridRenderer.Create: Creating buffers");
+                    CreateBuffers();
+                }
+                catch (Exception bufferEx)
+                {
+                    Console.Error.WriteLine($"VeldridRenderer.Create: Buffer creation failed: {bufferEx.GetType().Name}: {bufferEx.Message}");
+                    Console.Error.WriteLine($"Stack trace: {bufferEx.StackTrace}");
+                    throw new InvalidOperationException($"Failed to create buffers for {_graphicsDevice.BackendType} backend", bufferEx);
+                }
+                
                 _isInitialized = true;
+                Console.WriteLine($"VeldridRenderer.Create: Successfully initialized for {_graphicsDevice.BackendType} backend");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"VeldridRenderer.Create failed: {ex.Message}");
+                Console.Error.WriteLine($"VeldridRenderer.Create failed: {ex.GetType().Name}: {ex.Message}");
+                Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
+                
+                // Check for common issues based on backend type
+                if (_graphicsDevice.BackendType == GraphicsBackend.Vulkan)
+                {
+                    Console.Error.WriteLine("Vulkan backend failure - possible causes:");
+                    Console.Error.WriteLine("- Device may not support Vulkan or have proper drivers");
+                    Console.Error.WriteLine("- Required Vulkan extensions may be missing");
+                    Console.Error.WriteLine("- Memory allocation may have failed");
+                }
+                else if (_graphicsDevice.BackendType == GraphicsBackend.OpenGLES)
+                {
+                    Console.Error.WriteLine("OpenGLES backend failure - possible causes:");
+                    Console.Error.WriteLine("- EGL context creation may have failed");
+                    Console.Error.WriteLine("- Required OpenGLES version may not be supported");
+                    Console.Error.WriteLine("- Shader compilation may have failed due to GLSL version");
+                }
+                
                 return false;
             }
         }

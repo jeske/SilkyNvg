@@ -11,4 +11,5 @@
     <ProjectReference Include="..\..\SilkyNvg.Common\SilkyNvg.Common.csproj" />
   </ItemGroup>
 
+  <Import Project="$(MSBuildThisFileDirectory)../../SilkyNvg.Build.props" />
 </Project>

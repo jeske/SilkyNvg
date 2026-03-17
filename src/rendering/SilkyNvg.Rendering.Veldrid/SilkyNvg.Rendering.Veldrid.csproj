@@ -21,16 +21,21 @@
 
   <!-- ppy.Veldrid fork: actively maintained, Android/iOS support (default) -->
   <!-- Veldrid.SPIRV removed: shaders are precompiled at build time by Scripts/CompileShaders.cs -->
-  <!-- DEV_LOCAL_VELDRID env var: set to local Veldrid.csproj path to use local source instead of NuGet -->
+  <!-- DEV_LOCAL_VELDRID property: set to local Veldrid.csproj path to use local source instead of NuGet
+       DEV_LOCAL_VELDRID takes precedence over UseLegacyVeldrid - if set, always uses local project reference -->
+  
+  <!-- Use local Veldrid source if DEV_LOCAL_VELDRID is set (regardless of legacy mode) -->
+  <ItemGroup Condition="'$(DEV_LOCAL_VELDRID)' != ''">
+    <ProjectReference Include="$(DEV_LOCAL_VELDRID)" />
+  </ItemGroup>
+  
+  <!-- Use ppy.Veldrid NuGet package (default, non-legacy mode, no local override) -->
   <ItemGroup Condition="'$(UseLegacyVeldrid)' != 'true' and '$(DEV_LOCAL_VELDRID)' == ''">
     <PackageReference Include="ppy.Veldrid" Version="4.9.69-ga405fe8484" />
   </ItemGroup>
-  <ItemGroup Condition="'$(UseLegacyVeldrid)' != 'true' and '$(DEV_LOCAL_VELDRID)' != ''">
-    <ProjectReference Include="$(DEV_LOCAL_VELDRID)" />
-  </ItemGroup>
 
-  <!-- Legacy upstream Veldrid 4.9.0 (abandoned March 2024, desktop-only) -->
-  <ItemGroup Condition="'$(UseLegacyVeldrid)' == 'true'">
+  <!-- Use legacy upstream Veldrid 4.9.0 NuGet package (legacy mode, no local override) -->
+  <ItemGroup Condition="'$(UseLegacyVeldrid)' == 'true' and '$(DEV_LOCAL_VELDRID)' == ''">
     <PackageReference Include="Veldrid" Version="4.9.0" />
   </ItemGroup>
 
@@ -74,4 +79,5 @@
     <Message Text="Cleaned generated shader files from Shaders/Compiled/" Importance="high" />
   </Target>
 
+  <Import Project="$(MSBuildThisFileDirectory)../../SilkyNvg.Build.props" />
 </Project>

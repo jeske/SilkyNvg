@@ -6,4 +6,5 @@
     <Version />
   </PropertyGroup>
 
+  <Import Project="$(MSBuildThisFileDirectory)../SilkyNvg.Build.props" />
 </Project>

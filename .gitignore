@@ -1,9 +1,11 @@
 *.swp
 *.*~
 project.lock.json
+packages.lock.json
 .DS_Store
 *.pyc
 nupkg/
+*.disable
 
 # Visual Studio Code
 .vscode

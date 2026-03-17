@@ -1,0 +1,104 @@
+<!--
+  Silky.shared.Build.props - Shared Build Infrastructure for SilkyNvg packages
+
+  This file is explicitly imported by packable project .props files (SilkyNvg.Build.props, etc.)
+  It provides:
+    1. Git-height versioning via version.jsonc + ComputeGitVersion target
+    2. Local NuGet feed deployment via LOCAL_NUGET_REPO env var
+    3. ArtificialNecessity.CodeAnalyzers (provides JSONC-tolerant JsonPeek MSBuild task)
+    4. Centralized output paths (bin/, bin/Packages/)
+
+  NOT auto-discovered — must be explicitly imported via:
+    <Import Project="$(MSBuildThisFileDirectory)../../Silky.shared.Build.props" />
+  or similar relative path from the importing .props/.csproj file.
+-->
+<Project>
+
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <RepositoryRootDirectory>$(MSBuildThisFileDirectory)</RepositoryRootDirectory>
+    <BinDir>$(RepositoryRootDirectory)bin</BinDir>
+    <OutputPath>$([System.IO.Path]::GetFullPath('$(RepositoryRootDirectory)bin\$(Configuration)'))\$(MSBuildProjectName)</OutputPath>
+    <PackageOutputPath>$(BinDir)\Packages\$(Configuration)</PackageOutputPath>
+  </PropertyGroup>
+
+  <!-- ArtificialNecessity.CodeAnalyzers provides JsonPeek.exe CLI tool (JSONC-tolerant)
+       used by ComputeGitVersion to read version.jsonc, and by build scripts to increment versions.
+       EnforceExplicitEnumValues defaults to none — projects opt in explicitly. -->
+  <PropertyGroup>
+    <ANCodeAnalyzersVersion>0.1.13</ANCodeAnalyzersVersion>
+    <JsonPeekExePath>$(USERPROFILE)\.nuget\packages\artificialnecessity.codeanalyzers\$(ANCodeAnalyzersVersion)\tools\net8.0\any\JsonPeek.exe</JsonPeekExePath>
+    <EnforceExplicitEnumValues Condition="'$(EnforceExplicitEnumValues)' == ''">none</EnforceExplicitEnumValues>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ArtificialNecessity.CodeAnalyzers" Version="$(ANCodeAnalyzersVersion)" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       Local NuGet feed: set LOCAL_NUGET_REPO env var to deploy packages
+       after 'dotnet pack'. Only affects projects with IsPackable=true.
+       Use cmd/build-local-nuget.ps1 to build+pack+deploy in one step.
+       ════════════════════════════════════════════════════════════════ -->
+  <PropertyGroup>
+    <LocalNuGetFeedPath>$(LOCAL_NUGET_REPO)</LocalNuGetFeedPath>
+  </PropertyGroup>
+
+  <!-- Deploy .nupkg to local NuGet feed after pack -->
+  <Target Name="DeployToLocalNuGet" AfterTargets="Pack" Condition="'$(LocalNuGetFeedPath)' != ''">
+    <MakeDir Directories="$(LocalNuGetFeedPath)" Condition="!Exists('$(LocalNuGetFeedPath)')" />
+    <Copy SourceFiles="$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(LocalNuGetFeedPath)"
+          OverwriteReadOnlyFiles="true" />
+    <Message Importance="High" Text="$(PackageId): Deployed $(PackageId).$(PackageVersion).nupkg to $(LocalNuGetFeedPath)" />
+  </Target>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       Git-height versioning: {major}.{minor}.{buildNumberOffset}-{GitHeight}.{BuildNum}.g{GitHash}
+       Example: 1.0.7-42.0.g3be210cd
+       Reads base version + buildNumberOffset from version.jsonc at repo root
+       using JsonPeek.exe CLI tool from ArtificialNecessity.CodeAnalyzers.
+       Only runs for packable projects.
+       ════════════════════════════════════════════════════════════════ -->
+  <Target Name="ComputeGitVersion" BeforeTargets="GenerateNuspecDependencies;GetPackageVersionInfo;Pack;GenerateAssemblyInfo"
+          Condition="'$(IsPackable)' == 'true' and '$(NewRelease)' != 'true'">
+
+    <!-- Read base version and buildNumberOffset from version.jsonc via JsonPeek.exe (JSONC-tolerant) -->
+    <Exec Command="&quot;$(JsonPeekExePath)&quot; &quot;$(RepositoryRootDirectory)version.jsonc&quot; version"
+          ConsoleToMSBuild="true" StandardOutputImportance="low"
+          Condition="Exists('$(RepositoryRootDirectory)version.jsonc')">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_BaseVersionFromJson" />
+    </Exec>
+    <Exec Command="&quot;$(JsonPeekExePath)&quot; &quot;$(RepositoryRootDirectory)version.jsonc&quot; buildNumberOffset"
+          ConsoleToMSBuild="true" StandardOutputImportance="low"
+          Condition="Exists('$(RepositoryRootDirectory)version.jsonc')">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_BuildNumberOffsetFromJson" />
+    </Exec>
+
+    <!-- Compose VersionPrefix: {major}.{minor}.{buildNumberOffset} — always from version.jsonc -->
+    <PropertyGroup Condition="'$(_BaseVersionFromJson)' != ''">
+      <_BuildNumberOffsetFromJson Condition="'$(_BuildNumberOffsetFromJson)' == ''">0</_BuildNumberOffsetFromJson>
+      <VersionPrefix>$(_BaseVersionFromJson).$(_BuildNumberOffsetFromJson)</VersionPrefix>
+    </PropertyGroup>
+
+    <Error Text="ComputeGitVersion: No VersionPrefix found. Set VersionPrefix in the csproj or ensure version.jsonc exists at $(RepositoryRootDirectory)"
+           Condition="'$(VersionPrefix)' == ''" />
+
+    <Exec Command="git rev-list --count HEAD" ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHeight" />
+    </Exec>
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitShortHash" />
+    </Exec>
+    <ReadLinesFromFile File="$(MSBuildProjectDirectory)\buildnum.txt" Condition="Exists('$(MSBuildProjectDirectory)\buildnum.txt')">
+      <Output TaskParameter="Lines" PropertyName="LocalBuildNumber" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <LocalBuildNumber Condition="'$(LocalBuildNumber)' == ''">0</LocalBuildNumber>
+      <Version>$(VersionPrefix)-$(GitCommitHeight).$(LocalBuildNumber).g$(GitShortHash)</Version>
+      <PackageVersion>$(Version)</PackageVersion>
+      <InformationalVersion>$(Version)</InformationalVersion>
+    </PropertyGroup>
+    <Message Importance="High" Text="$(PackageId): version $(Version)" />
+  </Target>
+
+</Project>

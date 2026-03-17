@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="$(MSBuildThisFileDirectory)../../SilkyNvg.Build.props" />
+
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0-android</TargetFrameworks>
+    <IsPackable>true</IsPackable>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -29,14 +32,9 @@
     <ProjectReference Include="$(DEV_LOCAL_VELDRID)" />
   </ItemGroup>
   
-  <!-- Use ppy.Veldrid NuGet package (default, non-legacy mode, no local override) -->
-  <ItemGroup Condition="'$(UseLegacyVeldrid)' != 'true' and '$(DEV_LOCAL_VELDRID)' == ''">
-    <PackageReference Include="ppy.Veldrid" Version="4.9.69-ga405fe8484" />
-  </ItemGroup>
-
-  <!-- Use legacy upstream Veldrid 4.9.0 NuGet package (legacy mode, no local override) -->
-  <ItemGroup Condition="'$(UseLegacyVeldrid)' == 'true' and '$(DEV_LOCAL_VELDRID)' == ''">
-    <PackageReference Include="Veldrid" Version="4.9.0" />
+  <!-- Use ArtificialNecessity.Veldrid NuGet package (default, no local override) -->
+  <ItemGroup Condition="'$(DEV_LOCAL_VELDRID)' == ''">
+    <PackageReference Include="ArtificialNecessity.Veldrid" Version="4.9.7" />
   </ItemGroup>
 
   <!-- Exclude build-time scripts and GLSL source from compilation -->
@@ -79,5 +77,4 @@
     <Message Text="Cleaned generated shader files from Shaders/Compiled/" Importance="high" />
   </Target>
 
-  <Import Project="$(MSBuildThisFileDirectory)../../SilkyNvg.Build.props" />
 </Project>

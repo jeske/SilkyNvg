@@ -15,11 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SilkyNvg.Rendering\SilkyNvg.Rendering.csproj" />
-    <ProjectReference Include="..\..\components\SilkyNvg.Blending\SilkyNvg.Blending.csproj" />
-    <ProjectReference Include="..\..\components\SilkyNvg.Images\SilkyNvg.Images.csproj" />
-    <ProjectReference Include="..\..\components\SilkyNvg.Tools\SilkyNvg.Tools.csproj" />
-    
+    <ProjectReference Include="..\..\SilkyNvg\SilkyNvg.csproj" />
   </ItemGroup>
 
   <!-- ppy.Veldrid fork: actively maintained, Android/iOS support (default) -->

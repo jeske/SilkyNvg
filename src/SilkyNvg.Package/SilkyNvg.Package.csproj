@@ -1,0 +1,56 @@
+<!--
+  SilkyNvg.Package.csproj - Packaging-only project (no code)
+  
+  Produces the ArtificialNecessity.SilkyNvg NuGet package by bundling all internal
+  SilkyNvg DLLs into a single package. The real projects and their references stay
+  untouched — PrivateAssets="all" only exists here.
+  
+  Usage: dotnet pack src/SilkyNvg.Package/SilkyNvg.Package.csproj
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="$(MSBuildThisFileDirectory)../SilkyNvg.Build.props" />
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0-android</TargetFrameworks>
+    <PackageId>ArtificialNecessity.SilkyNvg</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version />
+    <!-- Hook the target that stuffs referenced DLLs into lib/ -->
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeRefsInPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <!-- All internal projects, PrivateAssets=all so they become
+       bundled DLLs, not NuGet dependencies -->
+  <ItemGroup>
+    <ProjectReference Include="..\SilkyNvg.Core\SilkyNvg.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\SilkyNvg.Common\SilkyNvg.Common.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\rendering\SilkyNvg.Rendering\SilkyNvg.Rendering.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.FontStash\SilkyNvg.FontStash.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Tools\SilkyNvg.Tools.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Blending\SilkyNvg.Blending.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Graphics\SilkyNvg.Graphics.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Images\SilkyNvg.Images.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Paths\SilkyNvg.Paths.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Scissoring\SilkyNvg.Scissoring.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Text\SilkyNvg.Text.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Transforms\SilkyNvg.Transforms.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- External NuGet dependencies from internal projects that must be surfaced
+       to consumers (PrivateAssets="all" on ProjectReferences hides transitive deps) -->
+  <ItemGroup>
+    <PackageReference Include="SafeStbImageSharp" Version="2.22.4" />
+  </ItemGroup>
+
+  <!-- This target grabs all referenced DLLs and stuffs them
+       into the package's lib/ folder -->
+  <Target Name="IncludeRefsInPackage"
+          DependsOnTargets="BuildOnlySettings;ResolveReferences">
+    <ItemGroup>
+      <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths)"
+                            TargetPath="%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

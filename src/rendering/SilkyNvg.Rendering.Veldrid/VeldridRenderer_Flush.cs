@@ -44,18 +44,18 @@ namespace SilkyNvg.Rendering.Veldrid
             // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);
 
-            // Set viewport explicitly — OpenGL's default viewport may be stale after Veldrid's context takeover
-            uint fullFramebufferWidth = _graphicsDevice.SwapchainFramebuffer.Width;
-            uint fullFramebufferHeight = _graphicsDevice.SwapchainFramebuffer.Height;
-            commandList.SetViewport(0, new Viewport(0, 0, fullFramebufferWidth, fullFramebufferHeight, 0, 1));
+            // Use viewport dimensions from BeginFrame() — the caller is responsible for setting
+            // the correct framebuffer on the command list (via commandList.SetFramebuffer()) before
+            // calling BeginFrame/EndFrame. This matches the OpenGL backend pattern where the caller
+            // binds the correct GL context/framebuffer.
+            // NOTE: Do NOT use _graphicsDevice.SwapchainFramebuffer — that's always the main
+            // swapchain. For multi-window rendering, each window has its own framebuffer.
+            uint framebufferPixelWidth = (uint)(_viewportSize.Width * _devicePixelRatio);
+            uint framebufferPixelHeight = (uint)(_viewportSize.Height * _devicePixelRatio);
+            commandList.SetViewport(0, new Viewport(0, 0, framebufferPixelWidth, framebufferPixelHeight, 0, 1));
 
             // Default scissor to full framebuffer (scissor test is always enabled in pipelines)
-            // IMPORTANT: Use framebuffer dimensions, not NVG viewport — scissor rect is in pixel coordinates
-            commandList.SetScissorRect(0, 0, 0, fullFramebufferWidth, fullFramebufferHeight);
-
-            // Scale factor from NVG coordinates to framebuffer pixels
-            float nvgToFramebufferScaleX = _viewportSize.Width > 0 ? fullFramebufferWidth / _viewportSize.Width : 1.0f;
-            float nvgToFramebufferScaleY = _viewportSize.Height > 0 ? fullFramebufferHeight / _viewportSize.Height : 1.0f;
+            commandList.SetScissorRect(0, 0, 0, framebufferPixelWidth, framebufferPixelHeight);
 
             // Execute draw calls, switching pipeline and scissor per call
             DrawCallType lastPipelineType = (DrawCallType)255; // Force first switch
@@ -125,16 +125,16 @@ namespace SilkyNvg.Rendering.Veldrid
 
                 // Apply scissor rect BEFORE drawing (scale from NVG coordinates to framebuffer pixels)
                 if (drawCall.HasScissor) {
-                    uint scaledScissorX = (uint)Math.Max(0, (int)(drawCall.ScissorX * nvgToFramebufferScaleX));
-                    uint scaledScissorY = (uint)Math.Max(0, (int)(drawCall.ScissorY * nvgToFramebufferScaleY));
-                    uint scaledScissorWidth = (uint)(drawCall.ScissorWidth * nvgToFramebufferScaleX);
-                    uint scaledScissorHeight = (uint)(drawCall.ScissorHeight * nvgToFramebufferScaleY);
+                    uint scaledScissorX = (uint)Math.Max(0, (int)(drawCall.ScissorX * _devicePixelRatio));
+                    uint scaledScissorY = (uint)Math.Max(0, (int)(drawCall.ScissorY * _devicePixelRatio));
+                    uint scaledScissorWidth = (uint)(drawCall.ScissorWidth * _devicePixelRatio);
+                    uint scaledScissorHeight = (uint)(drawCall.ScissorHeight * _devicePixelRatio);
                     commandList.SetScissorRect(0,
                         scaledScissorX, scaledScissorY,
                         scaledScissorWidth, scaledScissorHeight);
                     lastScissorWasFullViewport = false;
                 } else if (!lastScissorWasFullViewport) {
-                    commandList.SetScissorRect(0, 0, 0, fullFramebufferWidth, fullFramebufferHeight);
+                    commandList.SetScissorRect(0, 0, 0, framebufferPixelWidth, framebufferPixelHeight);
                     lastScissorWasFullViewport = true;
                 }
 

@@ -108,6 +108,7 @@ namespace SilkyNvg.Rendering.Veldrid
         private int _flushesSinceLastBufferResize = 0;
         private int _peakVertexCountSinceLastResize = 0;
         private SizeF _viewportSize;
+        private float _devicePixelRatio = 1.0f;
         private bool _isInitialized;
 
         // Active command list for rendering - MUST be set before BeginFrame/EndFrame!
@@ -201,6 +202,7 @@ namespace SilkyNvg.Rendering.Veldrid
         public void Viewport(SizeF size, float devicePixelRatio)
         {
             _viewportSize = size;
+            _devicePixelRatio = devicePixelRatio;
         }
 
         /// <summary>

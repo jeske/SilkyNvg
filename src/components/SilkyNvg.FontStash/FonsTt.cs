@@ -28,7 +28,12 @@ namespace FontStash.NET
 
         public static float GetPixelHeightScale(FonsTtImpl font, float size)
         {
-            return font.font.stbtt_ScaleForMappingEmToPixels(size);
+            // Must use ScaleForPixelHeight (scales by ascent-descent) to match
+            // the metric normalization in AddFontMem which divides by (ascent - descent).
+            // The original fontstash.h uses stbtt_ScaleForPixelHeight.
+            // stbtt_ScaleForMappingEmToPixels scales by unitsPerEm which is a DIFFERENT
+            // value, causing a mismatch between alignment offsets and actual glyph positions.
+            return font.font.stbtt_ScaleForPixelHeight(size);
         }
 
         public static int GetGlyphIndex(FonsTtImpl font, int codepoint)
@@ -55,6 +60,15 @@ namespace FontStash.NET
         public static int GetGlyphKernAdvance(FonsTtImpl font, int glyph1, int glyph2)
         {
             return font.font.stbtt_GetGlyphKernAdvance(glyph1, glyph2);
+        }
+
+        public static int GetGlyphBox(FonsTtImpl font, int glyphIndex, out int x0, out int y0, out int x1, out int y1)
+        {
+            x0 = 0;
+            y0 = 0;
+            x1 = 0;
+            y1 = 0;
+            return font.font.stbtt_GetGlyphBox(glyphIndex, ref x0, ref y0, ref x1, ref y1);
         }
 
     }

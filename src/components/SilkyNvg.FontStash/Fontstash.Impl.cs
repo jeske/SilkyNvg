@@ -344,7 +344,9 @@ namespace FontStash.NET
                 }
                 else if ((align & (uint)FonsAlign.Middle) != 0)
                 {
-                    return (font.ascender + font.descender) / 2.0f * (float)isize / 10.0f;
+                    // Split the difference between cap height (H) and ascender (l)
+                    // to visually center mixed-case text
+                    return (font.capHeight + font.ascender) / 4.0f * (float)isize / 10.0f;
                 }
                 else if ((align & (uint)FonsAlign.Baseline) != 0)
                 {
@@ -363,7 +365,7 @@ namespace FontStash.NET
                 }
                 else if ((align & (uint)FonsAlign.Middle) != 0)
                 {
-                    return -(font.ascender + font.descender) / 2.0f * (float)isize / 10.0f;
+                    return -(font.capHeight + font.ascender) / 4.0f * (float)isize / 10.0f;
                 }
                 else if ((align & (uint)FonsAlign.Baseline) != 0)
                 {

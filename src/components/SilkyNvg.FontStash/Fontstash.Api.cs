@@ -225,7 +225,7 @@ namespace FontStash.NET
 
             font.name = name;
 
-            for ( int i = 0; i < HASH_LUT_SIZE; i++)
+            for (int i = 0; i < HASH_LUT_SIZE; i++)
             {
                 font.lut[i] = -1;
             }
@@ -242,11 +242,28 @@ namespace FontStash.NET
             }
 
             FonsTt.GetFontVMetrics(font.font, out int ascent, out int descent, out int lineGap);
-            ascent += lineGap;
+            // lineGap is inter-line spacing — it must NOT inflate ascent/descent normalization.
+            // It only affects line height (lineh).
             int fh = ascent - descent;
             font.ascender = (float)ascent / (float)fh;
             font.descender = (float)descent / (float)fh;
-            font.lineh = font.ascender - font.descender;
+            font.lineh = (float)(ascent - descent + lineGap) / (float)fh;
+
+            // Estimate cap height by measuring the 'H' glyph bounding box.
+            // stb_truetype doesn't expose OS/2 capHeight, so we measure directly.
+            int capitalHGlyphIndex = FonsTt.GetGlyphIndex(font.font, 'H');
+            int capitalHTop = 0;
+            if (capitalHGlyphIndex != 0 &&
+                FonsTt.GetGlyphBox(font.font, capitalHGlyphIndex, out int _hx0, out int _hy0, out int _hx1, out capitalHTop) != 0)
+            {
+                // capitalHTop (y1) is the top of 'H' in font units (y-up coordinate system)
+                font.capHeight = (float)capitalHTop / (float)fh;
+            }
+            else
+            {
+                // Font has no 'H' glyph — approximate as 70% of ascender
+                font.capHeight = font.ascender * 0.7f;
+            }
 
             return idx;
         }
@@ -399,7 +416,7 @@ namespace FontStash.NET
             {
                 if (end != null && string.Compare(str, i, end, 0, end.Length) == 0)
                     break;
-                
+
                 if (Utf8.DecUtf8(ref utf8state, ref codepoint, str[i]) != 0)
                     continue;
 
@@ -464,7 +481,7 @@ namespace FontStash.NET
 
                 if (Utf8.DecUtf8(ref utf8state, ref codepoint, str[i]) != 0)
                     continue;
-                
+
                 glyph = GetGlyph(font, codepoint, isize, iblur, FonsGlyphBitmap.Optional);
                 if (glyph != null)
                 {

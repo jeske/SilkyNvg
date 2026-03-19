@@ -12,6 +12,7 @@ namespace FontStash.NET
         public byte freeData;
         public float ascender;
         public float descender;
+        public float capHeight;
         public float lineh;
         public FonsGlyph[] glyphs;
         public int cglyphs;

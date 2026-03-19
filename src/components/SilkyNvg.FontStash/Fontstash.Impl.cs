@@ -144,6 +144,7 @@ namespace FontStash.NET
             int g = FonsTt.GetGlyphIndex(font.font, (int)codepoint);
             if (g == 0)
             {
+                // Try fallback fonts first
                 for (i = 0; i < font.nfallbacks; i++)
                 {
                     FonsFont fallbackFont = _fonts[font.fallbacks[i]];
@@ -156,6 +157,21 @@ namespace FontStash.NET
                     }
                 }
             }
+
+            // Fallback glyph chain for missing codepoints:
+            // Try U+FFFD (replacement character) -> '#' -> glyph index 0 (.notdef)
+            if (g == 0)
+            {
+                // U+FFFD is the standard Unicode replacement character
+                g = FonsTt.GetGlyphIndex(renderFont.font, 0xFFFD);
+            }
+            if (g == 0)
+            {
+                // '#' as a visible ASCII fallback
+                g = FonsTt.GetGlyphIndex(renderFont.font, '#');
+            }
+            // If still 0, glyph index 0 is the .notdef glyph (built into every TrueType font).
+            // It typically renders as a blank box — this is the last resort.
 
             float scale = FonsTt.GetPixelHeightScale(renderFont.font, size);
             FonsTt.BuildGlyphBitmap(renderFont.font, g, scale, out int advance, out int lsb, out int x0, out int y0, out int x1, out int y1);

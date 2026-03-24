@@ -95,11 +95,20 @@ namespace SilkyNvg.Rendering
 
         internal void Flatten()
         {
+            // Guard: degenerate paths with 0 or 1 points have nothing to flatten.
+            // This happens when MoveTo + LineTo go to the same point — AddPoint
+            // deduplicates them, leaving only 1 point. Without this guard,
+            // the RemoveAt below empties the list and _points[^1] crashes.
+            if (_points.Count < 2)
+                return;
+
             Point p0 = _points[^1];
             Point p1 = _points[0];
             if (Point.Equals(p0, p1, _pixelRatio.DistTol))
             {
                 _points.RemoveAt(_points.Count - 1);
+                if (_points.Count < 1)
+                    return;
                 p0 = _points[^1];
                 Close();
             }
@@ -197,6 +206,9 @@ namespace SilkyNvg.Rendering
 
         internal void CalculateJoins(float iw, LineCap lineJoin, float miterLimit)
         {
+            if (_points.Count < 2)
+                return;
+
             Point p0 = _points[^1];
             Point p1 = _points[0];
             uint nleft = 0;
@@ -218,9 +230,13 @@ namespace SilkyNvg.Rendering
         internal void ExpandStroke(float aa, float u0, float u1, float w, LineCap lineCap, LineCap lineJoin, uint ncap)
         {
             _fill.Clear();
+            _stroke.Clear();
+
+            // Guard: need at least 2 points for a stroke (open path indexes _points[1]).
+            if (_points.Count < 2)
+                return;
 
             bool loop = Closed;
-            _stroke.Clear();
 
             Point p0, p1;
             int s, e;

@@ -652,7 +652,8 @@ namespace FontStash.NET
                 iter.prevGlyphIndex = glyph != null ? glyph.index : INVALID;
                 break;
             }
-            iter.next = str.Remove(0, i + 1);
+            int charsToSkip = Math.Min(i + 1, str.Length);
+            iter.next = str.Substring(charsToSkip);
 
             return true;
         }

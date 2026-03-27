@@ -1,4 +1,5 @@
-﻿using SilkyNvg.Common;
+﻿using System.Collections.Generic;
+using SilkyNvg.Common;
 using SilkyNvg.Core.Fonts;
 using SilkyNvg.Core.Instructions;
 using SilkyNvg.Core.Paths;
@@ -25,6 +26,14 @@ namespace SilkyNvg
         internal readonly StateStack stateStack;
         internal readonly PixelRatio pixelRatio;
         internal readonly FontManager fontManager;
+
+        /// <summary>
+        /// Probe which codepoints in a range have glyphs in the given font.
+        /// Delegates to FontStash.ProbeGlyphCoverage — bypasses rendering/caching.
+        /// Use for debugging font coverage.
+        /// </summary>
+        public IEnumerable<int> ProbeGlyphCoverage(int fontHandle, int codepointStart, int codepointEnd)
+            => fontManager.Fontstash.ProbeGlyphCoverage(fontHandle, codepointStart, codepointEnd);
 
         public FrameMeta FrameMeta { get; internal set; }
 

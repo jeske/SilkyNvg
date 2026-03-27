@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace FontStash.NET
@@ -684,6 +685,27 @@ namespace FontStash.NET
                 return true;
             }
             return false;
+        }
+        #endregion
+
+        #region Font Probe
+        /// <summary>
+        /// Probe which codepoints in a range have glyphs in the given font.
+        /// Returns a list of codepoints that have non-zero glyph indices.
+        /// Bypasses all rendering/caching — goes straight to stbtt_FindGlyphIndex.
+        /// Use for debugging font coverage.
+        /// </summary>
+        public IEnumerable<int> ProbeGlyphCoverage(int fontHandle, int codepointStart, int codepointEnd)
+        {
+            if (fontHandle < 0 || fontHandle >= _nfonts) yield break;
+            FonsFont font = _fonts[fontHandle];
+            if (font?.data == null) yield break;
+
+            for (int codepoint = codepointStart; codepoint <= codepointEnd; codepoint++) {
+                int glyphIndex = FonsTt.GetGlyphIndex(font.font, codepoint);
+                if (glyphIndex != 0)
+                    yield return codepoint;
+            }
         }
         #endregion
 

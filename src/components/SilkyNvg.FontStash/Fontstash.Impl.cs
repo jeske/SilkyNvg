@@ -148,23 +148,36 @@ namespace FontStash.NET {
 
             // Control character remap: if no font (primary or fallback) has the
             // U+FFFD error glyph, return null — zero advance, no rendering, no kerning.
-            // Do NOT fall through to the .notdef/U+FFFD/'#' fallback chain.
-            // The .notdef box or # must be reserved for font-glyph-missing issues.
+            // Do NOT fall through to the .notdef/'#' fallback chain.
+            // .notdef box = "font doesn't have this glyph" (encoding/font issue).
+            // U+FFFD diamond = "control char leaked to renderer" (layout engine bug).
+            // These must remain visually distinct signals.
             if (wasControlCharRemap && g == 0)
                 return null;
 
             // Fallback glyph chain for missing codepoints:
-            // Try U+FFFD (replacement character) -> '#' -> glyph index 0 (.notdef)
+            // Glyph 0 (.notdef box) is the standard "missing glyph" indicator in TrueType/OpenType.
+            // It's always present (glyph index 0 is reserved for .notdef in every font).
+            // We use it directly — do NOT try U+FFFD here, because U+FFFD is reserved for
+            // control character remaps (see above). Missing glyphs = .notdef box, not U+FFFD diamond.
+            // If glyph 0 somehow has no outline (degenerate font), fall back to '#'.
             if (g == 0) {
-                // U+FFFD is the standard Unicode replacement character
-                g = FonsTt.GetGlyphIndex(renderFont.font, 0xFFFD);
+                // g is already 0 = .notdef glyph index. Check if it has a real outline.
+                // stb_truetype: glyph 0 always exists but may have zero-size bounding box
+                // in some fonts. In that case, try '#' as a visible fallback.
+                FonsTt.BuildGlyphBitmap(renderFont.font, 0, FonsTt.GetPixelHeightScale(renderFont.font, size),
+                    out int notdefAdvance, out _, out int notdefX0, out int notdefY0, out int notdefX1, out int notdefY1);
+                if (notdefAdvance > 0 || notdefX1 > notdefX0) {
+                    // .notdef has a real outline — use it (g is already 0)
+                } else {
+                    // .notdef is degenerate — try '#' as visible fallback
+                    int hashGlyphIndex = FonsTt.GetGlyphIndex(renderFont.font, '#');
+                    if (hashGlyphIndex != 0) {
+                        g = hashGlyphIndex;
+                    }
+                    // If '#' also missing, g stays 0 — we'll render whatever .notdef gives us
+                }
             }
-            if (g == 0) {
-                // '#' as a visible ASCII fallback
-                g = FonsTt.GetGlyphIndex(renderFont.font, '#');
-            }
-            // If still 0, glyph index 0 is the .notdef glyph (built into every TrueType font).
-            // It typically renders as a blank box — this is the last resort.
 
             float scale = FonsTt.GetPixelHeightScale(renderFont.font, size);
             FonsTt.BuildGlyphBitmap(renderFont.font, g, scale, out int advance, out int lsb, out int x0, out int y0, out int x1, out int y1);

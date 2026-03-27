@@ -1,24 +1,19 @@
 ﻿using System;
 
-namespace FontStash.NET
-{
-    public partial class Fontstash
-    {
+namespace FontStash.NET {
+    public partial class Fontstash {
 
         private const int APREC = 16;
         private const int ZPREC = 7;
 
-        private void AddWhiteRect(int w, int h)
-        {
+        private void AddWhiteRect(int w, int h) {
             int gx = 0, gy = 0;
             if (!_atlas.AddRect(w, h, ref gx, ref gy))
                 return;
 
             int index = gx + (gy * _params.width);
-            for (int y = 0; y < h; y++)
-            {
-                for (int x = 0; x < w; x++)
-                {
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
                     _texData[index + x] = 0xff;
                 }
                 index += _params.width;
@@ -30,17 +25,14 @@ namespace FontStash.NET
             _dirtyRect[3] = Math.Max(_dirtyRect[3], gy + h);
         }
 
-        private FonsState GetState()
-        {
+        private FonsState GetState() {
             if (_states[_nstates - 1] == null)
                 _states[_nstates - 1] = new FonsState();
             return _states[_nstates - 1];
         }
 
-        private int AllocFont()
-        {
-            if (_nfonts + 1 > _cfonts)
-            {
+        private int AllocFont() {
+            if (_nfonts + 1 > _cfonts) {
                 _cfonts = _cfonts == 0 ? 8 : _cfonts * 2;
                 Array.Resize(ref _fonts, _cfonts);
             }
@@ -53,20 +45,16 @@ namespace FontStash.NET
             return _nfonts - 1;
         }
 
-        private void BlurCols(int index, int w, int h, int dstStride, int alpha)
-        {
-            for (int y = 0; y < h; y++)
-            {
+        private void BlurCols(int index, int w, int h, int dstStride, int alpha) {
+            for (int y = 0; y < h; y++) {
                 int z = 0;
-                for (int x = 1; x < w; x++)
-                {
+                for (int x = 1; x < w; x++) {
                     z += (alpha * (((int)(_texData[index + x]) << ZPREC) - z)) >> APREC;
                     _texData[index + x] = (byte)(z >> ZPREC);
                 }
                 _texData[index + (w - 1)] = 0;
                 z = 0;
-                for (int x = w - 2; x >= 0; x--)
-                {
+                for (int x = w - 2; x >= 0; x--) {
                     z += (alpha * (((int)(_texData[index + x]) << ZPREC) - z)) >> APREC;
                     _texData[index + x] = (byte)(z >> ZPREC);
                 }
@@ -75,20 +63,16 @@ namespace FontStash.NET
             }
         }
 
-        private void BlurRows(int index, int w, int h, int dstStride, int alpha)
-        {
-            for (int x = 0; x < w; x++)
-            {
+        private void BlurRows(int index, int w, int h, int dstStride, int alpha) {
+            for (int x = 0; x < w; x++) {
                 int z = 0;
-                for (int y = dstStride; y < h * dstStride; y += dstStride)
-                {
+                for (int y = dstStride; y < h * dstStride; y += dstStride) {
                     z += (alpha * (((int)(_texData[index + y]) << ZPREC) - z)) >> APREC;
                     _texData[index + y] = (byte)(z >> ZPREC);
                 }
                 _texData[index + ((h - 1) * dstStride)] = 0;
                 z = 0;
-                for (int y = (h - 2) * dstStride; y >= 0; y -= dstStride)
-                {
+                for (int y = (h - 2) * dstStride; y >= 0; y -= dstStride) {
                     z += (alpha * (((int)(_texData[index + y]) << ZPREC) - z)) >> APREC;
                     _texData[index + y] = (byte)(z >> ZPREC);
                 }
@@ -97,8 +81,7 @@ namespace FontStash.NET
             }
         }
 
-        private void Blur(int index, int w, int h, int dstStride, int blur)
-        {
+        private void Blur(int index, int w, int h, int dstStride, int blur) {
             if (blur < 1)
                 return;
 
@@ -110,8 +93,7 @@ namespace FontStash.NET
             BlurCols(index, w, h, dstStride, alpha);
         }
 
-        private FonsGlyph GetGlyph(FonsFont font, uint codepoint, short isize, short iblur, FonsGlyphBitmap bitmapOption)
-        {
+        private FonsGlyph GetGlyph(FonsFont font, uint codepoint, short isize, short iblur, FonsGlyphBitmap bitmapOption) {
             int gx = 0, gy = 0;
             FonsGlyph glyph = null;
             float size = isize / 10.0f;
@@ -125,15 +107,27 @@ namespace FontStash.NET
 
             _nscratch = 0;
 
+            // Control characters (0x00–0x1F, 0x7F): remap to Unicode Control Pictures
+            // block (U+2400–U+2421). These render as small mnemonic glyphs (␀ ␉ ␊ ␍)
+            // so control chars are VISIBLE when they leak through to the renderer —
+            // distinct from .notdef (◆) which means "font is missing a glyph."
+            // Seeing ␉ = "tab reached FontStash, layout engine should have handled it."
+            // Seeing ◆ = "font doesn't have this character." Different problems, different signals.
+            bool wasControlCharRemap = false;
+            if (codepoint <= 0x1F && codepoint >= 0x00) {
+                codepoint = 0x2400 + codepoint;  // NUL→␀, TAB→␉, LF→␊, CR→␍, etc.
+                wasControlCharRemap = true;
+            } else if (codepoint == 0x7F) {
+                codepoint = 0x2421;               // DEL→␡
+                wasControlCharRemap = true;
+            }
+
             uint h = Utils.HashInt(codepoint) & (HASH_LUT_SIZE - 1);
             int i = font.lut[h];
-            while (i != -1)
-            {
-                if (font.glyphs[i].codepoint == codepoint && font.glyphs[i].size == isize && font.glyphs[i].blur == iblur)
-                {
+            while (i != -1) {
+                if (font.glyphs[i].codepoint == codepoint && font.glyphs[i].size == isize && font.glyphs[i].blur == iblur) {
                     glyph = font.glyphs[i];
-                    if (bitmapOption == FonsGlyphBitmap.Optional || (glyph.x0 >= 0 && glyph.y0 >= 0))
-                    {
+                    if (bitmapOption == FonsGlyphBitmap.Optional || (glyph.x0 >= 0 && glyph.y0 >= 0)) {
                         return glyph;
                     }
                     break;
@@ -142,15 +136,12 @@ namespace FontStash.NET
             }
 
             int g = FonsTt.GetGlyphIndex(font.font, (int)codepoint);
-            if (g == 0)
-            {
+            if (g == 0) {
                 // Try fallback fonts first
-                for (i = 0; i < font.nfallbacks; i++)
-                {
+                for (i = 0; i < font.nfallbacks; i++) {
                     FonsFont fallbackFont = _fonts[font.fallbacks[i]];
                     int fallbackIndex = FonsTt.GetGlyphIndex(fallbackFont.font, (int)codepoint);
-                    if (fallbackIndex != 0)
-                    {
+                    if (fallbackIndex != 0) {
                         g = fallbackIndex;
                         renderFont = fallbackFont;
                         break;
@@ -158,15 +149,22 @@ namespace FontStash.NET
                 }
             }
 
+            // Control character remap: if no font (primary or fallback) has the control
+            // picture glyph, return null — zero advance, no rendering, no kerning.
+            // Do NOT fall through to the .notdef/U+FFFD/'#' fallback chain.
+            // The .notdef diamond must be reserved for genuinely missing characters
+            // (encoding bugs, font loading problems), not for control codes that the
+            // layout engine should have handled before they reached FontStash.
+            if (wasControlCharRemap && g == 0)
+                return null;
+
             // Fallback glyph chain for missing codepoints:
             // Try U+FFFD (replacement character) -> '#' -> glyph index 0 (.notdef)
-            if (g == 0)
-            {
+            if (g == 0) {
                 // U+FFFD is the standard Unicode replacement character
                 g = FonsTt.GetGlyphIndex(renderFont.font, 0xFFFD);
             }
-            if (g == 0)
-            {
+            if (g == 0) {
                 // '#' as a visible ASCII fallback
                 g = FonsTt.GetGlyphIndex(renderFont.font, '#');
             }
@@ -178,26 +176,21 @@ namespace FontStash.NET
             int gw = x1 - x0 + pad * 2;
             int gh = y1 - y0 + pad * 2;
 
-            if (bitmapOption == FonsGlyphBitmap.Requiered)
-            {
+            if (bitmapOption == FonsGlyphBitmap.Requiered) {
                 bool added = _atlas.AddRect(gw, gh, ref gx, ref gy);
-                if (!added)
-                {
+                if (!added) {
                     _handleError?.Invoke(FonsErrorCode.AtlasFull, 0);
                     added = _atlas.AddRect(gw, gh, ref gx, ref gy);
                 }
                 if (added == false)
                     return null;
-            }
-            else
-            {
+            } else {
                 gx = INVALID;
                 gy = INVALID;
             }
 
             // Init glyph
-            if (glyph == null)
-            {
+            if (glyph == null) {
                 glyph = font.AllocGlyph();
                 glyph.codepoint = codepoint;
                 glyph.size = isize;
@@ -216,8 +209,7 @@ namespace FontStash.NET
             glyph.xoff = (short)(x0 - pad);
             glyph.yoff = (short)(y0 - pad);
 
-            if (bitmapOption == FonsGlyphBitmap.Optional)
-            {
+            if (bitmapOption == FonsGlyphBitmap.Optional) {
                 return glyph;
             }
 
@@ -227,19 +219,16 @@ namespace FontStash.NET
 
             // Ensure border pixel
             index = glyph.x0 + (glyph.y0 * _params.width);
-            for (int y = 0; y < gh; y++)
-            {
+            for (int y = 0; y < gh; y++) {
                 _texData[index + (y * _params.width)] = 0;
                 _texData[index + (gw - 1 + y * _params.width)] = 0;
             }
-            for (int x = 0; x < gw; x++)
-            {
+            for (int x = 0; x < gw; x++) {
                 _texData[index + x] = 0;
                 _texData[index + ((gh - 1) * _params.width)] = 0;
             }
 
-            if (iblur > 0)
-            {
+            if (iblur > 0) {
                 _nscratch = 0;
                 index = glyph.x0 + glyph.y0 * _params.width;
                 Blur(index, gw, gh, _params.width, iblur);
@@ -253,12 +242,10 @@ namespace FontStash.NET
             return glyph;
         }
 
-        private FonsQuad GetQuad(FonsFont font, int prevGlyphIndex, FonsGlyph glyph, float scale, float spacing, ref float x, ref float y)
-        {
+        private FonsQuad GetQuad(FonsFont font, int prevGlyphIndex, FonsGlyph glyph, float scale, float spacing, ref float x, ref float y) {
             FonsQuad q = new();
 
-            if (prevGlyphIndex != INVALID)
-            {
+            if (prevGlyphIndex != INVALID) {
                 float adv = FonsTt.GetGlyphKernAdvance(font.font, prevGlyphIndex, glyph.index) * scale;
                 x += (int)(adv + spacing + 0.5f);
             }
@@ -271,8 +258,7 @@ namespace FontStash.NET
             float y1 = (short)(glyph.y1 - 1);
 
             float rx, ry;
-            if ((_params.flags & (byte)FonsFlags.ZeroTopleft) != 0)
-            {
+            if ((_params.flags & (byte)FonsFlags.ZeroTopleft) != 0) {
                 rx = MathF.Floor(x + xoff);
                 ry = MathF.Floor(y + yoff);
 
@@ -285,9 +271,7 @@ namespace FontStash.NET
                 q.t0 = y0 * _ith;
                 q.s1 = x1 * _itw;
                 q.t1 = y1 * _ith;
-            }
-            else
-            {
+            } else {
                 rx = MathF.Floor(x + xoff);
                 ry = MathF.Floor(y - yoff);
 
@@ -306,10 +290,8 @@ namespace FontStash.NET
             return q;
         }
 
-        private void Flush()
-        {
-            if (_dirtyRect[0] < _dirtyRect[2] && _dirtyRect[1] < _dirtyRect[3])
-            {
+        private void Flush() {
+            if (_dirtyRect[0] < _dirtyRect[2] && _dirtyRect[1] < _dirtyRect[3]) {
                 _params.renderUpdate?.Invoke(_dirtyRect, _texData);
                 _dirtyRect[0] = _params.width;
                 _dirtyRect[1] = _params.height;
@@ -317,15 +299,13 @@ namespace FontStash.NET
                 _dirtyRect[3] = 0;
             }
 
-            if (_nverts > 0)
-            {
+            if (_nverts > 0) {
                 _params.renderDraw?.Invoke(_verts, _tcoords, _colours, _nverts);
                 _nverts = 0;
             }
         }
 
-        private void Vertex(float x, float y, float s, float t, uint c)
-        {
+        private void Vertex(float x, float y, float s, float t, uint c) {
             _verts[_nverts * 2 + 0] = x;
             _verts[_nverts * 2 + 1] = y;
             _tcoords[_nverts * 2 + 0] = s;
@@ -334,45 +314,27 @@ namespace FontStash.NET
             _nverts++;
         }
 
-        private float GetVertAlign(FonsFont font, int align, short isize)
-        {
-            if ((_params.flags & (uint)FonsFlags.ZeroTopleft) != 0)
-            {
-                if ((align & (uint)FonsAlign.Top) != 0)
-                {
+        private float GetVertAlign(FonsFont font, int align, short isize) {
+            if ((_params.flags & (uint)FonsFlags.ZeroTopleft) != 0) {
+                if ((align & (uint)FonsAlign.Top) != 0) {
                     return font.ascender * (float)isize / 10.0f;
-                }
-                else if ((align & (uint)FonsAlign.Middle) != 0)
-                {
+                } else if ((align & (uint)FonsAlign.Middle) != 0) {
                     // Split the difference between cap height (H) and ascender (l)
                     // to visually center mixed-case text
                     return (font.capHeight + font.ascender) / 4.0f * (float)isize / 10.0f;
-                }
-                else if ((align & (uint)FonsAlign.Baseline) != 0)
-                {
+                } else if ((align & (uint)FonsAlign.Baseline) != 0) {
                     return 0.0f;
-                }
-                else if ((align & (uint)FonsAlign.Bottom) != 0)
-                {
+                } else if ((align & (uint)FonsAlign.Bottom) != 0) {
                     return font.descender * (float)isize / 10.0f;
                 }
-            }
-            else
-            {
-                if ((align & (uint)FonsAlign.Top) != 0)
-                {
+            } else {
+                if ((align & (uint)FonsAlign.Top) != 0) {
                     return -font.ascender * (float)isize / 10.0f;
-                }
-                else if ((align & (uint)FonsAlign.Middle) != 0)
-                {
+                } else if ((align & (uint)FonsAlign.Middle) != 0) {
                     return -(font.capHeight + font.ascender) / 4.0f * (float)isize / 10.0f;
-                }
-                else if ((align & (uint)FonsAlign.Baseline) != 0)
-                {
+                } else if ((align & (uint)FonsAlign.Baseline) != 0) {
                     return 0.0f;
-                }
-                else if ((align & (uint)FonsAlign.Bottom) != 0)
-                {
+                } else if ((align & (uint)FonsAlign.Bottom) != 0) {
                     return -font.descender * (float)isize / 10.0f;
                 }
             }

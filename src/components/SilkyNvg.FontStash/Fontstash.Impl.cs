@@ -107,18 +107,15 @@ namespace FontStash.NET {
 
             _nscratch = 0;
 
-            // Control characters (0x00–0x1F, 0x7F): remap to Unicode Control Pictures
-            // block (U+2400–U+2421). These render as small mnemonic glyphs (␀ ␉ ␊ ␍)
-            // so control chars are VISIBLE when they leak through to the renderer —
-            // distinct from .notdef (◆) which means "font is missing a glyph."
-            // Seeing ␉ = "tab reached FontStash, layout engine should have handled it."
-            // Seeing ◆ = "font doesn't have this character." Different problems, different signals.
+            // Control characters (0x00–0x1F, 0x7F): 
+            // These will NEVER render. We map them to U+FFFD, to distinguish 
+            // from notdef/null, which means "your font tables dont have this glyph."                
             bool wasControlCharRemap = false;
             if (codepoint <= 0x1F && codepoint >= 0x00) {
-                codepoint = 0x2400 + codepoint;  // NUL→␀, TAB→␉, LF→␊, CR→␍, etc.
+                codepoint = 0xFFFD;
                 wasControlCharRemap = true;
             } else if (codepoint == 0x7F) {
-                codepoint = 0x2421;               // DEL→␡
+                codepoint = 0xFFFD;
                 wasControlCharRemap = true;
             }
 
@@ -149,12 +146,10 @@ namespace FontStash.NET {
                 }
             }
 
-            // Control character remap: if no font (primary or fallback) has the control
-            // picture glyph, return null — zero advance, no rendering, no kerning.
+            // Control character remap: if no font (primary or fallback) has the
+            // U+FFFD error glyph, return null — zero advance, no rendering, no kerning.
             // Do NOT fall through to the .notdef/U+FFFD/'#' fallback chain.
-            // The .notdef diamond must be reserved for genuinely missing characters
-            // (encoding bugs, font loading problems), not for control codes that the
-            // layout engine should have handled before they reached FontStash.
+            // The .notdef box or # must be reserved for font-glyph-missing issues.
             if (wasControlCharRemap && g == 0)
                 return null;
 

@@ -30,7 +30,7 @@
   
   <!-- Use ArtificialNecessity.Veldrid NuGet package (default, no local override) -->
   <ItemGroup Condition="'$(DEV_LOCAL_VELDRID)' == ''">
-    <PackageReference Include="ArtificialNecessity.Veldrid" Version="4.9.7" />
+    <PackageReference Include="ArtificialNecessity.Veldrid" Version="4.10.19" />
   </ItemGroup>
 
   <!-- Exclude build-time scripts and GLSL source from compilation -->

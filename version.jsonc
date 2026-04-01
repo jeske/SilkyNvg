@@ -4,5 +4,5 @@
   // Format: {version}.{buildNumberOffset}-{GitHeight}.{LocalBuildNum}.g{GitHash}
   // Example: 1.0.7-42.0.g3be210cd
   "version": "1.0",
-  "buildNumberOffset": 48
+  "buildNumberOffset": 49
 }

@@ -55,6 +55,6 @@ NuGet.Config
 NuGet.Config
 
 # Local dev scripts (machine-specific paths)
-cmd/
+# cmd/
 
 .claude/

@@ -21,7 +21,14 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $solutionPath = Join-Path $projectRoot 'SilkyNvg.sln'
 $versionJsoncPath = Join-Path $projectRoot 'version.jsonc'
 $sharedBuildPropsPath = Join-Path $projectRoot 'Silky.shared.Build.props'
-$localNuGetFeedPath = 'C:\PROJECTS\LocalNuGet'
+
+# Use LOCAL_NUGET_FEED environment variable, fallback to default if not set
+$localNuGetFeedPath = $env:LOCAL_NUGET_FEED
+if (-not $localNuGetFeedPath) {
+    $localNuGetFeedPath = 'C:\PROJECTS\LocalNuGet'
+    Write-Host "WARNING: LOCAL_NUGET_FEED environment variable not set, using default: $localNuGetFeedPath" -ForegroundColor Yellow
+}
+
 
 # ── Resolve JsonPeek CLI tool from NuGet cache ──────────────────────────
 # Read the AN.CodeAnalyzers version from Silky.shared.Build.props

@@ -1,4 +1,4 @@
-﻿using SilkyNvg.Common;
+using SilkyNvg.Common;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -142,7 +142,7 @@ namespace SilkyNvg.Rendering
             }
             else
             {
-                Vector2 l0 = MatrixDeterminant * lw;
+                Vector2 l0 = Position + MatrixDeterminant * lw;
 
                 verts.Add(new(Position + dl0 * lw, lu, 1.0f));
                 verts.Add(new(Position, 0.5f, 1.0f));

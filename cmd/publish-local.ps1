@@ -5,6 +5,8 @@
 # from the ArtificialNecessity.CodeAnalyzers package, then builds all
 # packable projects with clean (non-prerelease) version numbers.
 #
+# Requires: LOCAL_NUGET_REPO environment variable must be set
+#
 # Usage:
 #   .\cmd\publish-local.ps1              # increment + build + deploy
 #   .\cmd\publish-local.ps1 -DryRun      # show what would happen, don't build
@@ -22,13 +24,12 @@ $solutionPath = Join-Path $projectRoot 'SilkyNvg.sln'
 $versionJsoncPath = Join-Path $projectRoot 'version.jsonc'
 $sharedBuildPropsPath = Join-Path $projectRoot 'Silky.shared.Build.props'
 
-# Use LOCAL_NUGET_FEED environment variable, fallback to default if not set
-$localNuGetFeedPath = $env:LOCAL_NUGET_FEED
-if (-not $localNuGetFeedPath) {
-    $localNuGetFeedPath = 'C:\PROJECTS\LocalNuGet'
-    Write-Host "WARNING: LOCAL_NUGET_FEED environment variable not set, using default: $localNuGetFeedPath" -ForegroundColor Yellow
+# Require LOCAL_NUGET_REPO environment variable
+if (-not $env:LOCAL_NUGET_REPO) {
+    Write-Host "ERROR: LOCAL_NUGET_REPO environment variable is not set!" -ForegroundColor Red
+    exit 1
 }
-
+$localNuGetFeedPath = $env:LOCAL_NUGET_REPO
 
 # ── Resolve JsonPeek CLI tool from NuGet cache ──────────────────────────
 # Read the AN.CodeAnalyzers version from Silky.shared.Build.props

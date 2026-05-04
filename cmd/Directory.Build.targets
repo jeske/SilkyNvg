@@ -1,0 +1,4 @@
+<!-- Intentionally empty — blocks MSBuild from inheriting the repo-root
+     Directory.Build.targets which overrides TargetFrameworks to net9.0.
+     This allows dotnet-run file-based apps in cmd/ to use their default TFM. -->
+<Project />

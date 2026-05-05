@@ -31,15 +31,28 @@ namespace SilkyNvg.Rendering.Veldrid
 
             var commandList = _activeRenderCommandList;
 
-            // Update view size uniform (use Vector4 for proper 16-byte alignment)
+            // Update view size uniform via commandList (per-command-list sequencing).
+            // CRITICAL: Must use commandList.UpdateBuffer, NOT _graphicsDevice.UpdateBuffer!
+            // _graphicsDevice.UpdateBuffer is immediate/global — the last caller wins for ALL pending
+            // command lists. In multi-window scenarios, a second window's flush would overwrite the
+            // uniform before the first window's command list executes on the GPU.
+            // commandList.UpdateBuffer bakes the data into THIS command list's stream, ensuring each
+            // window's draws see their own correct viewSize regardless of execution timing.
             // viewSize.z = Y direction multiplier: +1.0 for OpenGL/D3D11 (Y-up), -1.0 for Vulkan (Y-down)
             float clipSpaceYMultiplier = _graphicsDevice.IsClipSpaceYInverted ? -1.0f : 1.0f;
             var viewSizeData = new Vector4(_viewportSize.Width, _viewportSize.Height, clipSpaceYMultiplier, 0);
-            _graphicsDevice.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
+            commandList.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
 
-            // Upload vertices (zero-alloc: pass span slice directly, no ToArray() allocation)
-            // GPU buffer is already sized correctly by EnsureVertexCapacity() during batching
-            _graphicsDevice.UpdateBuffer(_vertexBuffer, 0, _vertexBatchArray.AsSpan(0, _vertexBatchCount));
+            // Upload vertices via commandList (same rationale as viewSize above).
+            // GPU buffer is already sized correctly by EnsureVertexCapacity() during batching.
+            // Uses GCHandle pinning to get IntPtr for exact-size upload (zero-alloc).
+            var vertexPinHandle = GCHandle.Alloc(_vertexBatchArray, GCHandleType.Pinned);
+            try {
+                uint vertexUploadBytes = (uint)(_vertexBatchCount * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
+                commandList.UpdateBuffer(_vertexBuffer, 0, vertexPinHandle.AddrOfPinnedObject(), vertexUploadBytes);
+            } finally {
+                vertexPinHandle.Free();
+            }
 
             // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);

@@ -39,19 +39,21 @@ namespace SilkyNvg.Rendering.Veldrid
     /// │  same buffer before submitting the command list, the GPU only sees the  │
     /// │  LAST value for ALL draw calls that reference this buffer.              │
     /// │                                                                         │
-    /// │  ✅ USE FOR: One-time-per-frame data (viewSize, vertex upload)          │
+    /// │  ❌ NEVER USE in Flush() — breaks multi-window rendering!              │
     /// │  ❌ NEVER FOR: Per-draw-call uniforms (paint params, textures)          │
+    /// │  ✅ USE FOR: One-time resource creation / initialization only           │
     /// └─────────────────────────────────────────────────────────────────────────┘
     ///
     /// ┌─────────────────────────────────────────────────────────────────────────┐
     /// │  commandList.UpdateBuffer(buffer, offset, data)                         │
     /// │                                                                         │
-    /// │  SEQUENCED / PER-DRAW — recorded into the command list at this point.   │
+    /// │  SEQUENCED / PER-COMMAND-LIST — recorded into the command list stream.  │
     /// │  The GPU sees the data AT THIS POSITION in the command stream.          │
     /// │  Multiple updates to the same buffer are properly sequenced with draws. │
+    /// │  Each command list carries its own snapshot — safe for multi-window.    │
     /// │                                                                         │
-    /// │  ✅ USE FOR: Per-draw-call uniforms (paint params that change each draw)│
-    /// │  ❌ AVOID FOR: Large uploads (vertex buffers) — less efficient          │
+    /// │  ✅ USE FOR: ALL per-frame data (viewSize, vertices, paint params)      │
+    /// │  ✅ Ensures each window's command list is self-contained                │
     /// └─────────────────────────────────────────────────────────────────────────┘
     /// </remarks>
     public sealed partial class VeldridRenderer : INvgRenderer

@@ -1250,6 +1250,29 @@ namespace StbTrueTypeSharp
 			return (int)ttUSHORT(this.data + this.head + 18);
 		}
 
+		/// <summary>
+		/// Returns the sCapHeight field from the OS/2 table (int16, font units).
+		/// sCapHeight was added in OS/2 version 2. Returns 0 if the OS/2 table
+		/// is missing or is version 0/1 (which don't contain sCapHeight).
+		/// </summary>
+		public int stbtt_GetCapHeight(out bool available)
+		{
+			var tab = (int)stbtt__find_table(this.data, (uint)this.fontstart, "OS/2");
+			if (tab == 0)
+			{
+				available = false;
+				return 0;
+			}
+			int version = ttUSHORT(this.data + tab); // OS/2 table version at offset 0
+			if (version < 2)
+			{
+				available = false;
+				return 0;
+			}
+			available = true;
+			return ttSHORT(this.data + tab + 88);
+		}
+
 		public FakePtr<byte> stbtt_FindSVGDoc(int gl)
 		{
 			var i = 0;

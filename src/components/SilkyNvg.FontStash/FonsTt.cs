@@ -40,6 +40,16 @@ namespace FontStash.NET
             return font.font.stbtt_GetUnitsPerEm();
         }
 
+        /// <summary>
+        /// Returns the OS/2 sCapHeight value in font units.
+        /// Returns 0 with available=false if the font lacks an OS/2 table
+        /// or the table is version 0/1 (which predate sCapHeight).
+        /// </summary>
+        public static int GetCapHeight(FonsTtImpl font, out bool available)
+        {
+            return font.font.stbtt_GetCapHeight(out available);
+        }
+
         public static int GetGlyphIndex(FonsTtImpl font, int codepoint)
         {
             return font.font.stbtt_FindGlyphIndex(codepoint);

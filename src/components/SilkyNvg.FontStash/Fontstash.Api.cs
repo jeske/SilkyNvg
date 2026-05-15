@@ -711,6 +711,32 @@ namespace FontStash.NET
         }
         #endregion
 
+        #region Font Design Metrics
+        /// <summary>
+        /// Returns raw font design metrics for the given font handle:
+        /// unitsPerEm (from the head table) and sCapHeight (from the OS/2 table).
+        /// These are in font design units, not pixels — divide by unitsPerEm and
+        /// multiply by the desired pixel size to get pixel values.
+        /// </summary>
+        /// <param name="fontHandle">Font handle returned by AddFont / AddFontMem.</param>
+        /// <param name="unitsPerEm">The font's em square size in design units (head table, offset 18).</param>
+        /// <param name="capHeight">OS/2 sCapHeight in design units (offset 88). 0 if unavailable.</param>
+        /// <param name="capHeightAvailable">True if the font's OS/2 table is version 2+ and contains sCapHeight.</param>
+        public void GetFontDesignMetrics(int fontHandle,
+            out int unitsPerEm, out int capHeight, out bool capHeightAvailable)
+        {
+            unitsPerEm = 0;
+            capHeight = 0;
+            capHeightAvailable = false;
+            if (fontHandle < 0 || fontHandle >= _nfonts) return;
+            FonsFont font = _fonts[fontHandle];
+            if (font?.data == null) return;
+
+            unitsPerEm = FonsTt.GetUnitsPerEm(font.font);
+            capHeight = FonsTt.GetCapHeight(font.font, out capHeightAvailable);
+        }
+        #endregion
+
         #region Debug
         public void DrawDebug(float x, float y)
         {

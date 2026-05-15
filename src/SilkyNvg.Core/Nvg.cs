@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using SilkyNvg.Common;
 using SilkyNvg.Core.Fonts;
 using SilkyNvg.Core.Instructions;
@@ -34,6 +34,20 @@ namespace SilkyNvg
         /// </summary>
         public IEnumerable<int> ProbeGlyphCoverage(int fontHandle, int codepointStart, int codepointEnd)
             => fontManager.Fontstash.ProbeGlyphCoverage(fontHandle, codepointStart, codepointEnd);
+
+        /// <summary>
+        /// Returns raw font design metrics: unitsPerEm (head table) and sCapHeight (OS/2 table).
+        /// Values are in font design units. To convert to pixels:
+        ///   expectedCapHeightPx = (capHeight / (float)unitsPerEm) * fontSizePx
+        /// </summary>
+        /// <param name="fontHandle">Font handle from CreateFont / CreateFontMem.</param>
+        /// <param name="unitsPerEm">Em square size in design units.</param>
+        /// <param name="capHeight">OS/2 sCapHeight in design units. 0 if unavailable.</param>
+        /// <param name="capHeightAvailable">True if the font's OS/2 table contains sCapHeight.</param>
+        public void GetFontDesignMetrics(int fontHandle,
+            out int unitsPerEm, out int capHeight, out bool capHeightAvailable)
+            => fontManager.Fontstash.GetFontDesignMetrics(fontHandle,
+                out unitsPerEm, out capHeight, out capHeightAvailable);
 
         public FrameMeta FrameMeta { get; internal set; }
 

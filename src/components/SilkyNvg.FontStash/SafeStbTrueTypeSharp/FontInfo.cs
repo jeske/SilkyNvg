@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using static StbTrueTypeSharp.Common;
 
 namespace StbTrueTypeSharp
@@ -1243,6 +1243,11 @@ namespace StbTrueTypeSharp
 		{
 			var unitsPerEm = (int)ttUSHORT(this.data + this.head + 18);
 			return pixels / unitsPerEm;
+		}
+
+		public int stbtt_GetUnitsPerEm()
+		{
+			return (int)ttUSHORT(this.data + this.head + 18);
 		}
 
 		public FakePtr<byte> stbtt_FindSVGDoc(int gl)

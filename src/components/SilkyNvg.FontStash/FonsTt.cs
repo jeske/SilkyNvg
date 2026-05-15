@@ -1,4 +1,4 @@
-﻿using StbTrueTypeSharp;
+using StbTrueTypeSharp;
 
 namespace FontStash.NET
 {
@@ -28,12 +28,16 @@ namespace FontStash.NET
 
         public static float GetPixelHeightScale(FonsTtImpl font, float size)
         {
-            // Must use ScaleForPixelHeight (scales by ascent-descent) to match
-            // the metric normalization in AddFontMem which divides by (ascent - descent).
-            // The original fontstash.h uses stbtt_ScaleForPixelHeight.
-            // stbtt_ScaleForMappingEmToPixels scales by unitsPerEm which is a DIFFERENT
-            // value, causing a mismatch between alignment offsets and actual glyph positions.
-            return font.font.stbtt_ScaleForPixelHeight(size);
+            // Use ScaleForMappingEmToPixels so that the font-size parameter means
+            // "1 em = this many pixels", matching CSS/browser behaviour.
+            // The metric normalization in AddFontMem also divides by unitsPerEm
+            // so alignment offsets and glyph positions stay consistent.
+            return font.font.stbtt_ScaleForMappingEmToPixels(size);
+        }
+
+        public static int GetUnitsPerEm(FonsTtImpl font)
+        {
+            return font.font.stbtt_GetUnitsPerEm();
         }
 
         public static int GetGlyphIndex(FonsTtImpl font, int codepoint)

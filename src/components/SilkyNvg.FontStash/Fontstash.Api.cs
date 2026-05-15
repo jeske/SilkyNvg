@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -243,12 +243,14 @@ namespace FontStash.NET
             }
 
             FonsTt.GetFontVMetrics(font.font, out int ascent, out int descent, out int lineGap);
-            // lineGap is inter-line spacing — it must NOT inflate ascent/descent normalization.
-            // It only affects line height (lineh).
-            int fh = ascent - descent;
-            font.ascender = (float)ascent / (float)fh;
-            font.descender = (float)descent / (float)fh;
-            font.lineh = (float)(ascent - descent + lineGap) / (float)fh;
+            // Normalize metrics by unitsPerEm so that multiplying by the pixel size
+            // gives CSS/browser-equivalent positioning.  GetPixelHeightScale uses
+            // stbtt_ScaleForMappingEmToPixels (also divides by unitsPerEm) so glyph
+            // outlines and alignment offsets stay consistent.
+            int unitsPerEm = FonsTt.GetUnitsPerEm(font.font);
+            font.ascender = (float)ascent / (float)unitsPerEm;
+            font.descender = (float)descent / (float)unitsPerEm;
+            font.lineh = (float)(ascent - descent + lineGap) / (float)unitsPerEm;
 
             // Estimate cap height by measuring the 'H' glyph bounding box.
             // stb_truetype doesn't expose OS/2 capHeight, so we measure directly.
@@ -258,7 +260,7 @@ namespace FontStash.NET
                 FonsTt.GetGlyphBox(font.font, capitalHGlyphIndex, out int _hx0, out int _hy0, out int _hx1, out capitalHTop) != 0)
             {
                 // capitalHTop (y1) is the top of 'H' in font units (y-up coordinate system)
-                font.capHeight = (float)capitalHTop / (float)fh;
+                font.capHeight = (float)capitalHTop / (float)unitsPerEm;
             }
             else
             {

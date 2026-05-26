@@ -3,6 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
+    <!-- Roll forward to whatever .NET runtime is installed (e.g., .NET 10) -->
+    <RollForward>LatestMajor</RollForward>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -13,8 +15,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ArtificialNecessity.Veldrid" Version="5.260525.201836" />
-    <PackageReference Include="ArtificialNecessity.Veldrid.SPIRV" Version="1.0.15-g007800fa9b" />
+    <PackageReference Include="ArtificialNecessity.Veldrid" Version="5.260526.143537" />
+    <PackageReference Include="ArtificialNecessity.Veldrid.SPIRV" Version="5.260526.145610" />
   </ItemGroup>
 
   <!-- After building the compiler, run it to generate shader files -->

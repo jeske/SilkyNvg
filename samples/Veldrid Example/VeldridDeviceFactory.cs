@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using Silk.NET.Windowing;
 using Silk.NET.Maths;
@@ -37,6 +38,34 @@ static class VeldridDeviceFactory
     /// <summary>Returns all Veldrid backends available on the current platform.</summary>
     public static GraphicsBackend[] GetAvailableBackends()
     {
+        // On macOS, the Vulkan loader needs VK_ICD_FILENAMES to find MoltenVK.
+        // The Vulkan SDK doesn't install system-wide; set this if the SDK is present.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) &&
+            string.IsNullOrEmpty(Environment.GetEnvironmentVariable("VK_ICD_FILENAMES")))
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            // Check common Vulkan SDK install locations
+            string[] icdSearchPaths =
+            [
+                Path.Combine(home, "VulkanSDK"),  // ~/VulkanSDK/{version}/macOS/share/vulkan/icd.d/
+            ];
+            foreach (string sdkRoot in icdSearchPaths)
+            {
+                if (Directory.Exists(sdkRoot))
+                {
+                    // Find the latest version's MoltenVK ICD JSON
+                    var icdFiles = Directory.GetFiles(sdkRoot, "MoltenVK_icd.json", SearchOption.AllDirectories);
+                    var macosIcd = Array.Find(icdFiles, f => f.Contains("macOS"));
+                    if (macosIcd != null)
+                    {
+                        Environment.SetEnvironmentVariable("VK_ICD_FILENAMES", macosIcd);
+                        Environment.SetEnvironmentVariable("VK_DRIVER_FILES", macosIcd);
+                        break;
+                    }
+                }
+            }
+        }
+
         var available = new System.Collections.Generic.List<GraphicsBackend>();
         foreach (var backend in PreferenceOrder)
         {
@@ -146,7 +175,7 @@ static class VeldridDeviceFactory
 
         OpenGLPlatformInfo platformInfo = new OpenGLPlatformInfo(
             openGLContextHandle: glContext.Handle,
-            getProcAddress: name => glContext.GetProcAddress(name),
+            getProcAddress: name => { try { return glContext.GetProcAddress(name); } catch { return IntPtr.Zero; } },
             makeCurrent: _ => glContext.MakeCurrent(),
             getCurrentContext: () => glContext.IsCurrent ? glContext.Handle : IntPtr.Zero,
             clearCurrentContext: () => glContext.Clear(),

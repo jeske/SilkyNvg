@@ -49,34 +49,41 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             var factory = _graphicsDevice.ResourceFactory;
 
-            // Use precompiled shaders (no runtime compilation needed)
-            try {
-                _vertexColorShaders = SolidFillShaders.CreateShaders(factory);
-                Console.WriteLine($"[VELDRID] Created SolidFill shaders for {factory.BackendType}");
-            } catch (Exception ex) {
-                throw new Exception($"Failed to create SolidFill shaders for {factory.BackendType}: {ex.Message}", ex);
-            }
-            
-            try {
-                _texturedShaders = TexturedShaders.CreateShaders(factory);
-                Console.WriteLine($"[VELDRID] Created Textured shaders for {factory.BackendType}");
-            } catch (Exception ex) {
-                throw new Exception($"Failed to create Textured shaders for {factory.BackendType}: {ex.Message}", ex);
-            }
-            
-            try {
-                _gradientShaders = GradientShaders.CreateShaders(factory);
-                Console.WriteLine($"[VELDRID] Created Gradient shaders for {factory.BackendType}");
-            } catch (Exception ex) {
-                throw new Exception($"Failed to create Gradient shaders for {factory.BackendType}: {ex.Message}", ex);
-            }
-            
-            try {
-                _imagePatternShaders = ImagePatternShaders.CreateShaders(factory);
-                Console.WriteLine($"[VELDRID] Created ImagePattern shaders for {factory.BackendType}");
-            } catch (Exception ex) {
-                throw new Exception($"Failed to create ImagePattern shaders for {factory.BackendType}: {ex.Message}", ex);
-            }
+            // Load precompiled shaders from .vdshader bundles (embedded resources).
+            // CreateFromBundle() returns both the Shader objects AND the ResourceLayoutDescription[]
+            // that guarantees correct resource binding on all backends (Vulkan, D3D11, Metal, OpenGL).
+            _solidFillResult = factory.CreateFromBundle(LoadBundleJson("SilkyNvg.Shaders.SolidFill.vdshader"));
+            _vertexColorShaders = _solidFillResult.Shaders;
+            Console.WriteLine($"[VELDRID] Created SolidFill shaders for {factory.BackendType}");
+
+            _texturedResult = factory.CreateFromBundle(LoadBundleJson("SilkyNvg.Shaders.Textured.vdshader"));
+            _texturedShaders = _texturedResult.Shaders;
+            Console.WriteLine($"[VELDRID] Created Textured shaders for {factory.BackendType}");
+
+            _gradientResult = factory.CreateFromBundle(LoadBundleJson("SilkyNvg.Shaders.Gradient.vdshader"));
+            _gradientShaders = _gradientResult.Shaders;
+            Console.WriteLine($"[VELDRID] Created Gradient shaders for {factory.BackendType}");
+
+            _imagePatternResult = factory.CreateFromBundle(LoadBundleJson("SilkyNvg.Shaders.ImagePattern.vdshader"));
+            _imagePatternShaders = _imagePatternResult.Shaders;
+            Console.WriteLine($"[VELDRID] Created ImagePattern shaders for {factory.BackendType}");
+        }
+
+        // Bundle results (hold ResourceLayouts used in CreatePipeline)
+        private PrecompiledShaderResult? _solidFillResult;
+        private PrecompiledShaderResult? _texturedResult;
+        private PrecompiledShaderResult? _gradientResult;
+        private PrecompiledShaderResult? _imagePatternResult;
+
+        private static string LoadBundleJson(string resourceName)
+        {
+            var assembly = typeof(VeldridRenderer).Assembly;
+            using var stream = assembly.GetManifestResourceStream(resourceName)
+                ?? throw new InvalidOperationException(
+                    $"Embedded shader bundle '{resourceName}' not found. " +
+                    $"Available resources: {string.Join(", ", assembly.GetManifestResourceNames())}");
+            using var reader = new System.IO.StreamReader(stream);
+            return reader.ReadToEnd();
         }
 
         private void CreatePipeline()
@@ -86,9 +93,8 @@ namespace SilkyNvg.Rendering.Veldrid
             // === SOLID FILL PIPELINE (shapes without textures) ===
             var sharedVertexLayout = ShaderLayouts.CreateVertexLayout();
 
-            // Resource layout for view size uniform only
-            _viewSizeOnlyResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
-                new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex)));
+            // Resource layouts from the .vdshader bundle — guaranteed correct on all backends
+            _viewSizeOnlyResourceLayout = factory.CreateResourceLayout(_solidFillResult!.ResourceLayouts[0]);
 
             var solidFillPipelineDesc = new GraphicsPipelineDescription
             {
@@ -112,11 +118,8 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // === TEXTURED PIPELINE (font atlas text rendering) ===
 
-            // Resource layout: ViewSize uniform + font atlas texture + sampler
-            _texturedResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
-                new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex),
-                new ResourceLayoutElementDescription("FontAtlas", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-                new ResourceLayoutElementDescription("FontAtlasSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+            // Resource layout from bundle (ViewSize + FontAtlas + Sampler)
+            _texturedResourceLayout = factory.CreateResourceLayout(_texturedResult!.ResourceLayouts[0]);
 
             // Create sampler for font atlas (linear filtering for smooth text)
             _fontAtlasSampler = factory.CreateSampler(new SamplerDescription
@@ -151,10 +154,8 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // === GRADIENT PIPELINE (linear, radial, box gradients) ===
 
-            // Resource layout: ViewSize uniform (vertex) + GradientParams uniform (fragment)
-            _gradientResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
-                new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex),
-                new ResourceLayoutElementDescription("GradientParams", ResourceKind.UniformBuffer, ShaderStages.Fragment)));
+            // Resource layout from bundle (ViewSize + GradientParams)
+            _gradientResourceLayout = factory.CreateResourceLayout(_gradientResult!.ResourceLayouts[0]);
 
             var gradientPipelineDesc = new GraphicsPipelineDescription
             {
@@ -178,12 +179,8 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // === IMAGE PATTERN PIPELINE (RGBA texture fill with paintMat UV transform) ===
 
-            // Resource layout: ViewSize (vertex) + ImagePatternParams (fragment) + Texture + Sampler
-            _imagePatternResourceLayout = factory.CreateResourceLayout(new ResourceLayoutDescription(
-                new ResourceLayoutElementDescription("ViewSize", ResourceKind.UniformBuffer, ShaderStages.Vertex),
-                new ResourceLayoutElementDescription("ImagePatternParams", ResourceKind.UniformBuffer, ShaderStages.Fragment),
-                new ResourceLayoutElementDescription("PatternTexture", ResourceKind.TextureReadOnly, ShaderStages.Fragment),
-                new ResourceLayoutElementDescription("PatternSampler", ResourceKind.Sampler, ShaderStages.Fragment)));
+            // Resource layout from bundle (ViewSize + ImagePatternParams + Texture + Sampler)
+            _imagePatternResourceLayout = factory.CreateResourceLayout(_imagePatternResult!.ResourceLayouts[0]);
 
             // Sampler for image patterns (linear filtering, clamp to edge)
             _imagePatternSampler = factory.CreateSampler(new SamplerDescription

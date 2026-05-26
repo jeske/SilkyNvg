@@ -32,11 +32,22 @@ sealed class NvgDemoApp : IDisposable
     private double _previousTime;
     private float _mouseX, _mouseY;
     private bool _blowup;
+    private bool _firstFrameDiagPrinted;
 
     public NvgDemoApp(GraphicsDevice device, IWindow window)
     {
         _device = device;
         _window = window;
+
+        // Ensure swapchain matches actual physical pixel dimensions (Retina/HiDPI).
+        // At creation time, the swapchain may have been sized with logical dimensions.
+        Vector2D<int> fbSize = window.FramebufferSize;
+        uint swapW = device.SwapchainFramebuffer.Width;
+        uint swapH = device.SwapchainFramebuffer.Height;
+        if (swapW != (uint)fbSize.X || swapH != (uint)fbSize.Y)
+        {
+            device.MainSwapchain.Resize((uint)fbSize.X, (uint)fbSize.Y);
+        }
 
         _commandList = device.ResourceFactory.CreateCommandList();
 
@@ -77,8 +88,27 @@ sealed class NvgDemoApp : IDisposable
         _commandList.ClearColorTarget(0, new RgbaFloat(0.3f, 0.3f, 0.32f, 1.0f));
         _commandList.ClearDepthStencil(1f, 0);
 
+        // Pass logical window size + actual pixel ratio.
         Vector2 winSize = _window.Size.As<float>().ToSystem();
-        _nvg.BeginFrame(new SizeF(winSize.X, winSize.Y), 1.0f);
+
+        if (!_firstFrameDiagPrinted)
+        {
+            _firstFrameDiagPrinted = true;
+            Vector2D<int> fbSizeDiag = _window.FramebufferSize;
+            uint swapW = _device.SwapchainFramebuffer.Width;
+            uint swapH = _device.SwapchainFramebuffer.Height;
+            float pr = (float)fbSizeDiag.X / winSize.X;
+            Console.WriteLine($"[FRAME 1 DIAG] Window logical: {winSize.X}x{winSize.Y}");
+            Console.WriteLine($"[FRAME 1 DIAG] Window framebuffer: {fbSizeDiag.X}x{fbSizeDiag.Y}");
+            Console.WriteLine($"[FRAME 1 DIAG] Swapchain framebuffer: {swapW}x{swapH}");
+            Console.WriteLine($"[FRAME 1 DIAG] Pixel ratio: {pr}");
+            Console.WriteLine($"[FRAME 1 DIAG] viewSize passed to NVG: {winSize.X}x{winSize.Y}");
+            Console.WriteLine($"[FRAME 1 DIAG] viewport will be: {winSize.X * pr}x{winSize.Y * pr}");
+        }
+
+        Vector2D<int> fbSize = _window.FramebufferSize;
+        float pixelRatio = (float)fbSize.X / winSize.X;
+        _nvg.BeginFrame(new SizeF(winSize.X, winSize.Y), pixelRatio);
 
         _demo.Render(_mouseX, _mouseY, winSize.X, winSize.Y, (float)currentTime, _blowup);
 
@@ -96,10 +126,13 @@ sealed class NvgDemoApp : IDisposable
         _device.SwapBuffers();
     }
 
-    /// <summary>Handle window resize.</summary>
+    /// <summary>Handle window resize — pass physical pixel dimensions to Veldrid.</summary>
     public void Resize(Vector2D<int> newSize)
     {
-        _device.MainSwapchain.Resize((uint)newSize.X, (uint)newSize.Y);
+        // Veldrid's Resize() sets the Metal drawable size directly.
+        // Must pass physical pixel dimensions (framebuffer), not logical window size.
+        Vector2D<int> fbSize = _window.FramebufferSize;
+        _device.MainSwapchain.Resize((uint)fbSize.X, (uint)fbSize.Y);
     }
 
     public void Dispose()

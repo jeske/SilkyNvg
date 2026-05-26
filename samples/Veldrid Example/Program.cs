@@ -52,7 +52,9 @@ static class Program
         // ── Window creation ────────────────────────────────────────────
         WindowOptions windowOptions = WindowOptions.Default;
         windowOptions.Size = new Vector2D<int>(WINDOW_WIDTH, WINDOW_HEIGHT);
-        windowOptions.Title = $"SilkyNvg {VeldridCompat.PackageName} Example ({backend})";
+        string veldridAssemblyName = typeof(GraphicsDevice).Assembly.GetName().Name!;
+        string veldridVersion = typeof(GraphicsDevice).Assembly.GetName().Version?.ToString() ?? "?";
+        windowOptions.Title = $"SilkyNvg [{veldridAssemblyName} {veldridVersion}] ({backend})";
         windowOptions.VSync = false;
         windowOptions.PreferredDepthBufferBits = 24;
         windowOptions.PreferredStencilBufferBits = 8;
@@ -83,7 +85,11 @@ static class Program
             PreferDepthRangeZeroToOne = true,
             PreferStandardClipSpaceYDirection = true,
             SyncToVerticalBlank = false,
-            SwapchainDepthFormat = depthFormat
+            SwapchainDepthFormat = depthFormat,
+            // Improved binding model: uniform buffers bind to their declared slot directly,
+            // without offset by vertex buffer count. Required for precompiled .vdshader bundles
+            // where the MSL shader has [[buffer(0)]] for the first uniform.
+            ResourceBindingModel = ResourceBindingModel.Improved
         };
 
         if (VeldridDeviceFactory.IsOpenGLBased(backend))

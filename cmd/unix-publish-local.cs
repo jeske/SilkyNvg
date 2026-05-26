@@ -2,9 +2,12 @@
 // publish-local.cs — Build release packages and deploy to local NuGet feed
 //
 // Cross-platform replacement for publish-local.ps1.
-// Uses timestamp-based versioning (v2): every build automatically gets a unique
-// version based on the current date/time. No version file manipulation needed.
-// The MSBuild DeployToLocalNuGet target handles copying .nupkg to LOCAL_NUGET_REPO.
+// Versioning is timestamp-based (v2) — every build gets a unique version
+// automatically via Silky.shared.Build.props. No version files to manage.
+// The timestamp is captured once here and passed to MSBuild so all projects
+// in the solution get the exact same version (no inter-project skew).
+//
+// Requires: LOCAL_NUGET_REPO environment variable must be set
 //
 // Usage:
 //   dotnet run cmd/unix-publish-local.cs              # build + pack + deploy
@@ -40,23 +43,31 @@ if (string.IsNullOrEmpty(localNuGetFeedPath))
     Environment.Exit(1);
 }
 
+// ── Capture timestamp ONCE so all projects get the same version ─────────
+var now = DateTime.Now;
+string buildYYMM   = now.ToString("yyMM");
+string buildDDHH   = now.ToString("ddHH");
+string buildmmss   = now.ToString("mmss");
+string buildYYMMDD = now.ToString("yyMMdd");
+string buildHHmmss = now.ToString("HHmmss");
+string[] versionProps = [$"/p:_BuildYYMM={buildYYMM}", $"/p:_BuildDDHH={buildDDHH}", $"/p:_Buildmmss={buildmmss}", $"/p:_BuildYYMMDD={buildYYMMDD}", $"/p:_BuildHHmmss={buildHHmmss}"];
+// NuGet normalizes version numbers by stripping leading zeros from numeric segments
+string packageVersion = $"1.{int.Parse(buildYYMMDD)}.{int.Parse(buildHHmmss)}";
+
 Console.WriteLine();
 WriteColor("=== Publishing SilkyNvg release to local NuGet feed ===", ConsoleColor.Cyan);
-WriteColor("Versioning:  timestamp-based (v2) — unique per build", ConsoleColor.DarkGray);
-WriteColor($"Local feed:  {localNuGetFeedPath}", ConsoleColor.DarkGray);
+WriteColor($"Version stamp: 1.{buildYYMM}.{buildDDHH}.{buildmmss} (pkg: {packageVersion})", ConsoleColor.DarkGray);
+WriteColor($"Local feed:    {localNuGetFeedPath}", ConsoleColor.DarkGray);
 
 if (dryRun)
 {
     Console.WriteLine();
-    WriteColor($"[DRY RUN] Would build release packages and deploy to {localNuGetFeedPath}", ConsoleColor.Yellow);
-    WriteColor("[DRY RUN] Version will be determined at build time (timestamp-based)", ConsoleColor.Yellow);
+    WriteColor($"[DRY RUN] Would build and deploy version {packageVersion} to {localNuGetFeedPath}", ConsoleColor.Yellow);
     Environment.Exit(0);
 }
 
 // ── Build and pack release packages ─────────────────────────────────────
-// Ensure LOCAL_NUGET_REPO is set for child processes (MSBuild DeployToLocalNuGet target)
 Environment.SetEnvironmentVariable("LOCAL_NUGET_REPO", localNuGetFeedPath);
-
 var failedSteps = new List<string>();
 
 // Clean old packages to avoid deploying stale versions
@@ -66,10 +77,13 @@ if (Directory.Exists(packageOutputDir))
         File.Delete(stalePackage);
 }
 
+// Capture timestamp before build/pack so we can identify newly deployed packages
+var deployStartTime = DateTime.Now;
+
 Console.WriteLine();
 WriteColor("=== Building and packaging ===", ConsoleColor.Cyan);
 
-// Pack only the 3 public packages (not the whole solution)
+// Pack only the 3 public packages (not the whole solution, which would produce unwanted granular packages)
 string[] packableProjects =
 [
     Path.Combine(projectRoot, "src", "SilkyNvg.Package", "SilkyNvg.Package.csproj"),                                      // ArtificialNecessity.SilkyNvg (umbrella)
@@ -82,7 +96,8 @@ foreach (string projectPath in packableProjects)
     string projectName = Path.GetFileNameWithoutExtension(projectPath);
     WriteColor($"  Packing {projectName}...", ConsoleColor.DarkGray);
 
-    int exitCode = RunProcess("dotnet", $"pack \"{projectPath}\" -c Release");
+    string versionArgs = string.Join(" ", versionProps);
+    int exitCode = RunProcess("dotnet", $"pack \"{projectPath}\" -c Release {versionArgs}");
 
     if (exitCode != 0)
     {
@@ -92,51 +107,7 @@ foreach (string projectPath in packableProjects)
     }
 }
 
-// ── Deploy packages to local NuGet feed ─────────────────────────────────
-// The MSBuild DeployToLocalNuGet target should handle this automatically during pack.
-// But verify packages were produced and report what was deployed.
-if (failedSteps.Count == 0)
-{
-    Console.WriteLine();
-    WriteColor("=== Verifying deployment to local NuGet feed ===", ConsoleColor.Cyan);
-
-    if (!Directory.Exists(localNuGetFeedPath))
-        Directory.CreateDirectory(localNuGetFeedPath);
-
-    if (Directory.Exists(packageOutputDir))
-    {
-        var packageFiles = Directory.GetFiles(packageOutputDir, "ArtificialNecessity.SilkyNvg*.nupkg");
-        if (packageFiles.Length > 0)
-        {
-            foreach (string packageFile in packageFiles)
-            {
-                string fileName = Path.GetFileName(packageFile);
-                // Copy as fallback in case MSBuild target didn't fire
-                string destPath = Path.Combine(localNuGetFeedPath, fileName);
-                if (!File.Exists(destPath))
-                    File.Copy(packageFile, destPath, overwrite: true);
-                WriteColor($"  + {fileName}", ConsoleColor.Green);
-            }
-        }
-        else
-        {
-            failedSteps.Add($"No ArtificialNecessity.SilkyNvg packages found in {packageOutputDir} after successful build");
-            WriteColor("ERROR: No packages produced!", ConsoleColor.Red);
-        }
-    }
-    else
-    {
-        failedSteps.Add($"Package output directory not found: {packageOutputDir}");
-        WriteColor($"ERROR: Package output directory not found: {packageOutputDir}", ConsoleColor.Red);
-    }
-}
-else
-{
-    Console.WriteLine();
-    WriteColor("=== Skipping deploy (build failed) ===", ConsoleColor.Yellow);
-}
-
-// ── Final status banner ─────────────────────────────────────────────────
+// ── Final status ────────────────────────────────────────────────────────
 Console.WriteLine();
 if (failedSteps.Count > 0)
 {
@@ -150,17 +121,34 @@ if (failedSteps.Count > 0)
 }
 else
 {
+    // Show packages deployed during this run
+    var deployedPackages = Directory.Exists(localNuGetFeedPath)
+        ? Directory.GetFiles(localNuGetFeedPath, "*.nupkg")
+            .Select(f => new FileInfo(f))
+            .Where(fi => fi.LastWriteTime >= deployStartTime)
+            .OrderBy(fi => fi.Name)
+            .ToArray()
+        : [];
+
     WriteColor("╔══════════════════════════════════════════════════════════════╗", ConsoleColor.Green);
     WriteColor("║                   PUBLISH SUCCEEDED                         ║", ConsoleColor.Green);
     WriteColor("╚══════════════════════════════════════════════════════════════╝", ConsoleColor.Green);
-    // Show the first package found for reference
-    if (Directory.Exists(packageOutputDir))
+
+    if (deployedPackages.Length > 0)
     {
-        var firstPkg = Directory.GetFiles(packageOutputDir, "ArtificialNecessity.SilkyNvg*.nupkg").FirstOrDefault();
-        if (firstPkg != null)
-            WriteColor($"  Package:  {Path.GetFileName(firstPkg)}", ConsoleColor.Green);
+        Console.WriteLine();
+        WriteColor("Deployed packages:", ConsoleColor.Cyan);
+        foreach (var pkg in deployedPackages)
+        {
+            double sizeKB = Math.Round(pkg.Length / 1024.0, 1);
+            WriteColor($"  {pkg.Name}  ({sizeKB} KB)", ConsoleColor.Green);
+        }
     }
-    WriteColor($"  Feed:     {localNuGetFeedPath}", ConsoleColor.Green);
+    else
+    {
+        WriteColor($"  Version:  {packageVersion}", ConsoleColor.Green);
+        WriteColor($"  Feed:     {localNuGetFeedPath}", ConsoleColor.Green);
+    }
     Console.WriteLine();
 }
 

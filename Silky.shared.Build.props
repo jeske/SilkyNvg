@@ -18,8 +18,8 @@
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <RepositoryRootDirectory>$(MSBuildThisFileDirectory)</RepositoryRootDirectory>
     <BinDir>$(RepositoryRootDirectory)bin</BinDir>
-    <OutputPath>$([System.IO.Path]::GetFullPath('$(RepositoryRootDirectory)bin\$(Configuration)'))\$(MSBuildProjectName)</OutputPath>
-    <PackageOutputPath>$(BinDir)\Packages\$(Configuration)</PackageOutputPath>
+    <OutputPath>$([System.IO.Path]::GetFullPath('$(RepositoryRootDirectory)bin/$(Configuration)'))/$(MSBuildProjectName)</OutputPath>
+    <PackageOutputPath>$(BinDir)/Packages/$(Configuration)</PackageOutputPath>
   </PropertyGroup>
 
   <!-- ══════════════════════════════════════════════════════════════════
@@ -83,13 +83,19 @@
     <LocalNuGetFeedPath>$(LOCAL_NUGET_REPO)</LocalNuGetFeedPath>
   </PropertyGroup>
 
-  <!-- Deploy .nupkg to local NuGet feed after pack -->
+  <!-- Deploy .nupkg to local NuGet feed after pack.
+       NuGet normalizes version numbers by stripping leading zeros from numeric segments
+       (e.g., 1.260526.093633 → 1.260526.93633). We apply the same normalization here
+       so the Copy target references the actual filename NuGet produced. -->
   <Target Name="DeployToLocalNuGet" AfterTargets="Pack" Condition="'$(LocalNuGetFeedPath)' != ''">
+    <PropertyGroup>
+      <_NupkgVersion>$(SilkyNvgMajorVersion).$([System.Int32]::Parse($(_BuildYYMMDD))).$([System.Int32]::Parse($(_BuildHHmmss)))</_NupkgVersion>
+    </PropertyGroup>
     <MakeDir Directories="$(LocalNuGetFeedPath)" Condition="!Exists('$(LocalNuGetFeedPath)')" />
-    <Copy SourceFiles="$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg"
+    <Copy SourceFiles="$(PackageOutputPath)/$(PackageId).$(_NupkgVersion).nupkg"
           DestinationFolder="$(LocalNuGetFeedPath)"
           OverwriteReadOnlyFiles="true" />
-    <Message Importance="High" Text="$(PackageId): Deployed $(PackageId).$(PackageVersion).nupkg to $(LocalNuGetFeedPath)" />
+    <Message Importance="High" Text="$(PackageId): Deployed $(PackageId).$(_NupkgVersion).nupkg to $(LocalNuGetFeedPath)" />
   </Target>
 
 </Project>

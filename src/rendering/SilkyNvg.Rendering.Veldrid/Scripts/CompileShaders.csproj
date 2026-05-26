@@ -13,7 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ArtificialNecessity.Veldrid" Version="4.9.7" />
+    <PackageReference Include="ArtificialNecessity.Veldrid" Version="5.260525.201836" />
     <PackageReference Include="ArtificialNecessity.Veldrid.SPIRV" Version="1.0.15-g007800fa9b" />
   </ItemGroup>
 

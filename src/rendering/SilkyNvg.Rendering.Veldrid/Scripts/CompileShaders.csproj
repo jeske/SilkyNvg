@@ -15,8 +15,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ArtificialNecessity.Veldrid" Version="5.260526.143537" />
-    <PackageReference Include="ArtificialNecessity.Veldrid.SPIRV" Version="5.260526.145610" />
+    <PackageReference Include="ArtificialNecessity.Veldrid" Version="5.260526.172036" />
+    <PackageReference Include="ArtificialNecessity.Veldrid.SPIRV" Version="5.260526.172230" />
   </ItemGroup>
 
   <!-- After building the compiler, run it to generate shader files -->

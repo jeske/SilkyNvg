@@ -1,4 +1,4 @@
-﻿using SilkyNvg;
+using SilkyNvg;
 using SilkyNvg.Graphics;
 using SilkyNvg.Images;
 using SilkyNvg.Paths;
@@ -105,7 +105,7 @@ namespace NvgExample
             _nvg.FontFace("icons");
             _nvg.FillColour(_nvg.Rgba(255, 255, 255, 64));
             _nvg.TextAlign(Align.Centre | Align.Middle);
-            _ = _nvg.Text(x + h * 0.55f, y + h * 0.55f, CpToUTF8(ICON_SEARCH));
+            _ = _nvg.Text(x + h * 0.55f, y + h * 0.55f, CpToString(ICON_SEARCH));
 
             _nvg.FontSize(17.0f);
             _nvg.FontFace("sans");
@@ -118,7 +118,7 @@ namespace NvgExample
             _nvg.FontFace("icons");
             _nvg.FillColour(_nvg.Rgba(255, 255, 255, 32));
             _nvg.TextAlign(Align.Centre | Align.Middle);
-            _ = _nvg.Text(x + w - h * 0.55f, y + h * 0.55f, CpToUTF8(ICON_CIRCLED_CROSS));
+            _ = _nvg.Text(x + w - h * 0.55f, y + h * 0.55f, CpToString(ICON_CIRCLED_CROSS));
         }
 
         private void DrawDropDown(string text, float x, float y, float w, float h)
@@ -146,7 +146,7 @@ namespace NvgExample
             _nvg.FontFace("icons");
             _nvg.FillColour(_nvg.Rgba(255, 255, 255, 64));
             _nvg.TextAlign(Align.Centre | Align.Middle);
-            _nvg.Text(x + w - h * 0.5f, y + h * 0.5f, CpToUTF8(ICON_CHEVRON_RIGHT));
+            _nvg.Text(x + w - h * 0.5f, y + h * 0.5f, CpToString(ICON_CHEVRON_RIGHT));
         }
 
         private void DrawLable(string text, float x, float y, float h)
@@ -222,7 +222,7 @@ namespace NvgExample
             _nvg.FontFace("icons");
             _nvg.FillColour(_nvg.Rgba(255, 255, 255, 128));
             _nvg.TextAlign(Align.Centre | Align.Middle);
-            _nvg.Text(x + 9.0f + 2.0f, y + h * 0.5f, CpToUTF8(ICON_CHECK));
+            _nvg.Text(x + 9.0f + 2.0f, y + h * 0.5f, CpToString(ICON_CHECK));
         }
 
         private void DrawButton(int preIcon, string text, float x, float y, float w, float h, Colour col)
@@ -253,7 +253,7 @@ namespace NvgExample
             {
                 _nvg.FontSize(h * 1.3f);
                 _nvg.FontFace("icons");
-                iw = _nvg.TextBounds(0.0f, 0.0f, CpToUTF8(preIcon), out _);
+                iw = _nvg.TextBounds(0.0f, 0.0f, CpToString(preIcon), out _);
                 iw += h * 0.15f;
             }
 
@@ -263,7 +263,7 @@ namespace NvgExample
                 _nvg.FontFace("icons");
                 _nvg.FillColour(_nvg.Rgba(255, 255, 255, 96));
                 _nvg.TextAlign(Align.Left | Align.Middle);
-                _nvg.Text(x + w * 0.5f - tw * 0.5f - iw * 0.75f, y + h * 0.5f, CpToUTF8(preIcon));
+                _nvg.Text(x + w * 0.5f - tw * 0.5f - iw * 0.75f, y + h * 0.5f, CpToString(preIcon));
             }
 
             _nvg.FontSize(17.0f);
@@ -1094,76 +1094,12 @@ namespace NvgExample
             return (a > min) ? ((a < max) ? a : max) : min;
         }
 
-        private static string CpToUTF8(int cp)
-        {
-            int n = 0;
-            if (cp < 0x80)
-            {
-                n = 1;
-            }
-            else if (cp < 0x800)
-            {
-                n = 2;
-            }
-            else if (cp < 0x10000)
-            {
-                n = 3;
-            }
-            else if (cp < 0x200000)
-            {
-                n = 4;
-            }
-            else if (cp < 0x4000000)
-            {
-                n = 5;
-            }
-            else if (cp <= 0x7fffffff)
-            {
-                n = 6;
-            }
-
-            char[] str = new char[8];
-            str[n] = '\0';
-
-            switch (n)
-            {
-                case 6:
-                    str[5] = (char)(0x80 | (cp & 0x3f));
-                    cp >>= 6;
-                    cp |= 0x4000000;
-                    goto case 5;
-                case 5:
-                    str[4] = (char)(0x80 | (cp & 0x3f));
-                    cp >>= 6;
-                    cp |= 0x200000;
-                    goto case 4;
-                case 4:
-                    str[3] = (char)(0x80 | (cp & 0x3f));
-                    cp >>= 6;
-                    cp |= 0x10000;
-                    goto case 3;
-                case 3:
-                    str[2] = (char)(0x80 | (cp & 0x3f));
-                    cp >>= 6;
-                    cp |= 0x800;
-                    goto case 2;
-                case 2:
-                    str[1] = (char)(0x80 | (cp & 0x3f));
-                    cp >>= 6;
-                    cp |= 0xc0;
-                    goto case 1;
-                case 1:
-                    str[0] = (char)cp;
-                    break;
-            }
-
-            string result = "";
-            for (ushort i = 0; str[i] != '\0'; i++)
-            {
-                result += str[i];
-            }
-            return result;
-        }
+        /// <summary>
+        /// Convert a Unicode codepoint to a C# string.
+        /// C# strings are UTF-16, so BMP codepoints become a single char
+        /// and codepoints above U+FFFF become a surrogate pair.
+        /// </summary>
+        private static string CpToString(int cp) => char.ConvertFromUtf32(cp);
 
         private static bool IsBlack(Colour col)
         {

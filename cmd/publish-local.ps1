@@ -1,14 +1,13 @@
 #!/usr/bin/env pwsh
 # publish-local.ps1 — Build release packages and deploy to local NuGet feed
 #
-# Increments buildNumberOffset in version.jsonc using the JsonPeek CLI tool
-# from the ArtificialNecessity.CodeAnalyzers package, then builds all
-# packable projects with clean (non-prerelease) version numbers.
+# Uses timestamp-based versioning (v2): every build automatically gets a unique
+# version based on the current date/time. No version file manipulation needed.
 #
 # Requires: LOCAL_NUGET_REPO environment variable must be set
 #
 # Usage:
-#   .\cmd\publish-local.ps1              # increment + build + deploy
+#   .\cmd\publish-local.ps1              # build + pack + deploy
 #   .\cmd\publish-local.ps1 -DryRun      # show what would happen, don't build
 #
 param(
@@ -21,8 +20,6 @@ $ErrorActionPreference = 'Stop'
 # Resolve project root (one level up from cmd/)
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $solutionPath = Join-Path $projectRoot 'SilkyNvg.sln'
-$versionJsoncPath = Join-Path $projectRoot 'version.jsonc'
-$sharedBuildPropsPath = Join-Path $projectRoot 'Silky.shared.Build.props'
 
 # Require LOCAL_NUGET_REPO environment variable
 if (-not $env:LOCAL_NUGET_REPO) {
@@ -31,44 +28,13 @@ if (-not $env:LOCAL_NUGET_REPO) {
 }
 $localNuGetFeedPath = $env:LOCAL_NUGET_REPO
 
-# ── Resolve JsonPeek CLI tool from NuGet cache ──────────────────────────
-# Read the AN.CodeAnalyzers version from Silky.shared.Build.props
-$sharedBuildPropsContent = Get-Content $sharedBuildPropsPath -Raw
-$codeAnalyzersVersionMatch = [regex]::Match($sharedBuildPropsContent, 'ANCodeAnalyzersVersion>([^<]+)<')
-if (-not $codeAnalyzersVersionMatch.Success) {
-    Write-Host "ERROR: Could not find ANCodeAnalyzersVersion in $sharedBuildPropsPath" -ForegroundColor Red
-    exit 1
-}
-$codeAnalyzersVersion = $codeAnalyzersVersionMatch.Groups[1].Value
-$jsonPeekExePath = Join-Path $env:USERPROFILE ".nuget\packages\artificialnecessity.codeanalyzers\$codeAnalyzersVersion\tools\net8.0\any\JsonPeek.exe"
-
-if (-not (Test-Path $jsonPeekExePath)) {
-    Write-Host "ERROR: JsonPeek CLI tool not found at: $jsonPeekExePath" -ForegroundColor Red
-    Write-Host "Run 'dotnet restore SilkyNvg.sln' to download the package." -ForegroundColor Yellow
-    exit 1
-}
-
-# ── Read current version info ────────────────────────────────────────────
-$baseVersion = & $jsonPeekExePath $versionJsoncPath version
-$currentBuildNumberOffset = & $jsonPeekExePath $versionJsoncPath buildNumberOffset
-$currentVersion = "$baseVersion.$currentBuildNumberOffset"
-
 Write-Host "`n=== Publishing SilkyNvg release to local NuGet feed ===" -ForegroundColor Cyan
-Write-Host "Current version: $currentVersion" -ForegroundColor DarkGray
-Write-Host "JsonPeek tool:   $jsonPeekExePath" -ForegroundColor DarkGray
-
-# ── Increment buildNumberOffset in version.jsonc ─────────────────────────
-$newBuildNumberOffset = & $jsonPeekExePath --inc-integer $versionJsoncPath buildNumberOffset
-$newVersion = "$baseVersion.$newBuildNumberOffset"
-
-Write-Host "New version:     $newVersion" -ForegroundColor Green
-Write-Host "Local feed:      $localNuGetFeedPath" -ForegroundColor DarkGray
+Write-Host 'Versioning:  timestamp-based (v2) — unique per build' -ForegroundColor DarkGray
+Write-Host "Local feed:  $localNuGetFeedPath" -ForegroundColor DarkGray
 
 if ($DryRun) {
-    Write-Host "`n[DRY RUN] Would build release version $newVersion and deploy to $localNuGetFeedPath" -ForegroundColor Yellow
-    # Revert the increment since this is a dry run
-    & $jsonPeekExePath --inc-integer $versionJsoncPath buildNumberOffset -1 | Out-Null
-    Write-Host "[DRY RUN] Reverted buildNumberOffset back to $currentBuildNumberOffset" -ForegroundColor Yellow
+    Write-Host "`n[DRY RUN] Would build release packages and deploy to $localNuGetFeedPath" -ForegroundColor Yellow
+    Write-Host '[DRY RUN] Version will be determined at build time (timestamp-based)' -ForegroundColor Yellow
     exit 0
 }
 
@@ -83,8 +49,6 @@ if (Test-Path $packageOutputDir) {
 }
 
 Write-Host "`n=== Building and packaging ===" -ForegroundColor Cyan
-# Pass version explicitly + NewRelease=true to skip ComputeGitVersion (which adds git-height suffix)
-$packVersionArgs = @('-c', 'Release', "/p:Version=$newVersion", "/p:PackageVersion=$newVersion", '/p:NewRelease=true')
 
 # Pack only the 3 public packages (not the whole solution, which would produce unwanted granular packages)
 $packableProjects = @(
@@ -96,7 +60,7 @@ $packableProjects = @(
 foreach ($packableProjectPath in $packableProjects) {
     $packableProjectName = [System.IO.Path]::GetFileNameWithoutExtension($packableProjectPath)
     Write-Host "  Packing $packableProjectName..." -ForegroundColor DarkGray
-    dotnet pack $packableProjectPath @packVersionArgs
+    dotnet pack $packableProjectPath -c Release
     if ($LASTEXITCODE -ne 0) {
         $failedSteps += "dotnet pack ($packableProjectName) failed with exit code $LASTEXITCODE"
         Write-Host "ERROR: dotnet pack ($packableProjectName) failed with exit code $LASTEXITCODE" -ForegroundColor Red
@@ -139,7 +103,11 @@ if ($failedSteps.Count -gt 0) {
     Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
     Write-Host "║                   PUBLISH SUCCEEDED                         ║" -ForegroundColor Green
     Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Green
-    Write-Host "  Version:  $newVersion" -ForegroundColor Green
+    # Show the version of the first package found
+    $firstPkg = Get-ChildItem -Path $packageOutputDir -Filter "ArtificialNecessity.SilkyNvg*.nupkg" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($firstPkg) {
+        Write-Host "  Package:  $($firstPkg.Name)" -ForegroundColor Green
+    }
     Write-Host "  Feed:     $localNuGetFeedPath" -ForegroundColor Green
     Write-Host ""
 }

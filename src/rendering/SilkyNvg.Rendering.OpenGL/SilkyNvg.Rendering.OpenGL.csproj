@@ -5,7 +5,7 @@
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0-android</TargetFrameworks>
     <IsPackable>true</IsPackable>
-    <Version />
+
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

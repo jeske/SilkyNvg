@@ -2,36 +2,32 @@
 // publish-local.cs — Build release packages and deploy to local NuGet feed
 //
 // Cross-platform replacement for publish-local.ps1.
-// Increments buildNumberOffset in version.jsonc using System.Text.Json,
-// then packs all packable projects with clean (non-prerelease) version numbers.
+// Uses timestamp-based versioning (v2): every build automatically gets a unique
+// version based on the current date/time. No version file manipulation needed.
 // The MSBuild DeployToLocalNuGet target handles copying .nupkg to LOCAL_NUGET_REPO.
 //
 // Usage:
-//   dotnet run cmd/publish-local.cs              # increment + build + deploy
-//   dotnet run cmd/publish-local.cs --dry-run    # show what would happen, don't build
+//   dotnet run cmd/unix-publish-local.cs              # build + pack + deploy
+//   dotnet run cmd/unix-publish-local.cs --dry-run    # show what would happen, don't build
 
 using System.Diagnostics;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 // ── Parse arguments ─────────────────────────────────────────────────────
 bool dryRun = args.Any(a => a is "--dry-run" or "-n");
 
 // ── Resolve project root (the script lives in cmd/) ─────────────────────
-// When invoked via `dotnet run cmd/publish-local.cs` from the repo root,
+// When invoked via `dotnet run cmd/unix-publish-local.cs` from the repo root,
 // the working directory is the repo root. But handle running from cmd/ too.
 string scriptDir = Path.GetDirectoryName(Path.GetFullPath(
     AppContext.BaseDirectory.Contains("publish-local")
-        ? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "cmd", "publish-local.cs")
-        : "cmd/publish-local.cs"))!;
+        ? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "cmd", "unix-publish-local.cs")
+        : "cmd/unix-publish-local.cs"))!;
 string projectRoot = Path.GetFullPath(Path.Combine(scriptDir, ".."));
 
-// Fallback: if version.jsonc isn't at projectRoot, use current directory
-if (!File.Exists(Path.Combine(projectRoot, "version.jsonc")))
+// Fallback: if SilkyNvg.sln isn't at projectRoot, use current directory
+if (!File.Exists(Path.Combine(projectRoot, "SilkyNvg.sln")))
     projectRoot = Directory.GetCurrentDirectory();
 
-string versionJsoncPath = Path.Combine(projectRoot, "version.jsonc");
 string packageOutputDir = Path.Combine(projectRoot, "bin", "Packages", "Release");
 
 // ── Require LOCAL_NUGET_REPO environment variable ───────────────────────
@@ -44,48 +40,16 @@ if (string.IsNullOrEmpty(localNuGetFeedPath))
     Environment.Exit(1);
 }
 
-// ── Read and parse version.jsonc ────────────────────────────────────────
-if (!File.Exists(versionJsoncPath))
-{
-    WriteColor($"ERROR: version.jsonc not found at: {versionJsoncPath}", ConsoleColor.Red);
-    Environment.Exit(1);
-}
-
-string versionJsoncText = File.ReadAllText(versionJsoncPath);
-// Strip JSONC comments (// line comments) for System.Text.Json parsing
-string jsonWithoutComments = Regex.Replace(versionJsoncText, @"//.*$", "", RegexOptions.Multiline);
-var versionDoc = JsonNode.Parse(jsonWithoutComments)!;
-
-string baseVersion = versionDoc["version"]!.GetValue<string>();
-int currentBuildNumberOffset = versionDoc["buildNumberOffset"]!.GetValue<int>();
-string currentVersion = $"{baseVersion}.{currentBuildNumberOffset}";
-
 Console.WriteLine();
 WriteColor("=== Publishing SilkyNvg release to local NuGet feed ===", ConsoleColor.Cyan);
-WriteColor($"Current version: {currentVersion}", ConsoleColor.DarkGray);
-
-// ── Increment buildNumberOffset in version.jsonc ────────────────────────
-int newBuildNumberOffset = currentBuildNumberOffset + 1;
-string newVersion = $"{baseVersion}.{newBuildNumberOffset}";
-
-// Write back to version.jsonc, preserving the original format (comments, whitespace)
-// Replace the buildNumberOffset value in the original text to preserve JSONC comments
-string updatedVersionJsoncText = Regex.Replace(
-    versionJsoncText,
-    @"(""buildNumberOffset"":\s*)\d+",
-    $"${{1}}{newBuildNumberOffset}");
-File.WriteAllText(versionJsoncPath, updatedVersionJsoncText);
-
-WriteColor($"New version:     {newVersion}", ConsoleColor.Green);
-WriteColor($"Local feed:      {localNuGetFeedPath}", ConsoleColor.DarkGray);
+WriteColor("Versioning:  timestamp-based (v2) — unique per build", ConsoleColor.DarkGray);
+WriteColor($"Local feed:  {localNuGetFeedPath}", ConsoleColor.DarkGray);
 
 if (dryRun)
 {
     Console.WriteLine();
-    WriteColor($"[DRY RUN] Would build release version {newVersion} and deploy to {localNuGetFeedPath}", ConsoleColor.Yellow);
-    // Revert the increment
-    File.WriteAllText(versionJsoncPath, versionJsoncText);
-    WriteColor($"[DRY RUN] Reverted buildNumberOffset back to {currentBuildNumberOffset}", ConsoleColor.Yellow);
+    WriteColor($"[DRY RUN] Would build release packages and deploy to {localNuGetFeedPath}", ConsoleColor.Yellow);
+    WriteColor("[DRY RUN] Version will be determined at build time (timestamp-based)", ConsoleColor.Yellow);
     Environment.Exit(0);
 }
 
@@ -118,8 +82,7 @@ foreach (string projectPath in packableProjects)
     string projectName = Path.GetFileNameWithoutExtension(projectPath);
     WriteColor($"  Packing {projectName}...", ConsoleColor.DarkGray);
 
-    int exitCode = RunProcess("dotnet",
-        $"pack \"{projectPath}\" -c Release /p:Version={newVersion} /p:PackageVersion={newVersion} /p:NewRelease=true");
+    int exitCode = RunProcess("dotnet", $"pack \"{projectPath}\" -c Release");
 
     if (exitCode != 0)
     {
@@ -190,7 +153,13 @@ else
     WriteColor("╔══════════════════════════════════════════════════════════════╗", ConsoleColor.Green);
     WriteColor("║                   PUBLISH SUCCEEDED                         ║", ConsoleColor.Green);
     WriteColor("╚══════════════════════════════════════════════════════════════╝", ConsoleColor.Green);
-    WriteColor($"  Version:  {newVersion}", ConsoleColor.Green);
+    // Show the first package found for reference
+    if (Directory.Exists(packageOutputDir))
+    {
+        var firstPkg = Directory.GetFiles(packageOutputDir, "ArtificialNecessity.SilkyNvg*.nupkg").FirstOrDefault();
+        if (firstPkg != null)
+            WriteColor($"  Package:  {Path.GetFileName(firstPkg)}", ConsoleColor.Green);
+    }
     WriteColor($"  Feed:     {localNuGetFeedPath}", ConsoleColor.Green);
     Console.WriteLine();
 }

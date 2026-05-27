@@ -1,16 +1,43 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Veldrid;
 
 namespace SilkyNvg.Rendering.Veldrid
 {
+    /// <summary>
+    /// Holds all GPU pipelines for a specific OutputDescription.
+    /// Pipelines are target-format-dependent (depth format, color format, sample count).
+    /// One PipelineSet is created per unique OutputDescription encountered at Flush() time.
+    /// </summary>
+    internal sealed class PipelineSet : IDisposable
+    {
+        public Pipeline SolidFill;
+        public Pipeline Textured;
+        public Pipeline Gradient;
+        public Pipeline ImagePattern;
+        public Pipeline StencilFill;
+        public Pipeline StencilCoverSolid;
+        public Pipeline StencilCoverGradient;
+        public Pipeline StencilCoverImagePattern;
+
+        public void Dispose()
+        {
+            SolidFill?.Dispose();
+            Textured?.Dispose();
+            Gradient?.Dispose();
+            ImagePattern?.Dispose();
+            StencilFill?.Dispose();
+            StencilCoverSolid?.Dispose();
+            StencilCoverGradient?.Dispose();
+            StencilCoverImagePattern?.Dispose();
+        }
+    }
+
     public sealed partial class VeldridRenderer
     {
         /// <summary>
         /// Depth-stencil state that explicitly disables both depth and stencil testing.
-        /// Required when the framebuffer has a depth-stencil attachment but we don't want to use it.
-        /// DepthStencilStateDescription.Disabled leaves stencil fields at zero defaults which
-        /// can cause issues on some drivers when a stencil buffer is present.
         /// </summary>
         private static readonly DepthStencilStateDescription DepthStencilDisabledExplicit = new DepthStencilStateDescription
         {
@@ -27,7 +54,6 @@ namespace SilkyNvg.Rendering.Veldrid
 
         /// <summary>
         /// Stencil cover depth-stencil state: draw where stencil != 0, zero stencil on pass.
-        /// Shared by all stencil cover pipeline variants (solid, gradient, image pattern).
         /// </summary>
         private static readonly DepthStencilStateDescription StencilCoverDepthStencilState = new DepthStencilStateDescription
         {
@@ -49,9 +75,6 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             var factory = _graphicsDevice.ResourceFactory;
 
-            // Load precompiled shaders from .vdshader bundles (embedded resources).
-            // CreateFromBundle() returns both the Shader objects AND the ResourceLayoutDescription[]
-            // that guarantees correct resource binding on all backends (Vulkan, D3D11, Metal, OpenGL).
             _solidFillResult = factory.CreateFromBundle(LoadBundleJson("SilkyNvg.Shaders.SolidFill.vdshader"));
             _vertexColorShaders = _solidFillResult.Shaders;
             Console.WriteLine($"[VELDRID] Created SolidFill shaders for {factory.BackendType}");
@@ -69,7 +92,7 @@ namespace SilkyNvg.Rendering.Veldrid
             Console.WriteLine($"[VELDRID] Created ImagePattern shaders for {factory.BackendType}");
         }
 
-        // Bundle results (hold ResourceLayouts used in CreatePipeline)
+        // Bundle results (hold ResourceLayouts used in CreatePipelinesForOutput)
         private PrecompiledShaderResult? _solidFillResult;
         private PrecompiledShaderResult? _texturedResult;
         private PrecompiledShaderResult? _gradientResult;
@@ -86,139 +109,103 @@ namespace SilkyNvg.Rendering.Veldrid
             return reader.ReadToEnd();
         }
 
-        private void CreatePipeline()
+        /// <summary>
+        /// Creates shared resource layouts (OutputDescription-independent).
+        /// Called once during Create().
+        /// </summary>
+        private void CreateResourceLayouts()
         {
             var factory = _graphicsDevice.ResourceFactory;
+            _viewSizeOnlyResourceLayout = factory.CreateResourceLayout(_solidFillResult!.ResourceLayouts[0]);
+            _texturedResourceLayout = factory.CreateResourceLayout(_texturedResult!.ResourceLayouts[0]);
+            _gradientResourceLayout = factory.CreateResourceLayout(_gradientResult!.ResourceLayouts[0]);
+            _imagePatternResourceLayout = factory.CreateResourceLayout(_imagePatternResult!.ResourceLayouts[0]);
+        }
 
-            // === SOLID FILL PIPELINE (shapes without textures) ===
+        /// <summary>
+        /// Gets or creates a PipelineSet for the given OutputDescription.
+        /// </summary>
+        internal PipelineSet GetOrCreatePipelines(OutputDescription outputDescription)
+        {
+            // Fast path: same target as last time
+            if (_lastUsedPipelineSet != null && _lastUsedOutputDescription.Equals(outputDescription))
+                return _lastUsedPipelineSet;
+
+            // Dictionary lookup
+            if (!_pipelineCache.TryGetValue(outputDescription, out var pipelineSet))
+            {
+                pipelineSet = CreatePipelinesForOutput(outputDescription);
+                _pipelineCache[outputDescription] = pipelineSet;
+                Console.WriteLine($"[VELDRID] Created NVG pipeline set for new OutputDescription (total cached: {_pipelineCache.Count})");
+            }
+
+            _lastUsedPipelineSet = pipelineSet;
+            _lastUsedOutputDescription = outputDescription;
+            return pipelineSet;
+        }
+
+        /// <summary>
+        /// Creates all 8 pipelines for a specific OutputDescription.
+        /// </summary>
+        private PipelineSet CreatePipelinesForOutput(OutputDescription outputDescription)
+        {
+            var factory = _graphicsDevice.ResourceFactory;
+            var pipelineSet = new PipelineSet();
             var sharedVertexLayout = ShaderLayouts.CreateVertexLayout();
 
-            // Resource layouts from the .vdshader bundle — guaranteed correct on all backends
-            _viewSizeOnlyResourceLayout = factory.CreateResourceLayout(_solidFillResult!.ResourceLayouts[0]);
-
-            var solidFillPipelineDesc = new GraphicsPipelineDescription
+            pipelineSet.SolidFill = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
-                    cullMode: FaceCullMode.None,
-                    fillMode: PolygonFillMode.Solid,
-                    frontFace: FrontFace.CounterClockwise,
-                    depthClipEnabled: true,
-                    scissorTestEnabled: true),
+                    cullMode: FaceCullMode.None, fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
-                ShaderSet = new ShaderSetDescription(
-                    new[] { sharedVertexLayout },
-                    _vertexColorShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
-            };
-
-            _solidFillPipeline = factory.CreateGraphicsPipeline(solidFillPipelineDesc);
-
-            // === TEXTURED PIPELINE (font atlas text rendering) ===
-
-            // Resource layout from bundle (ViewSize + FontAtlas + Sampler)
-            _texturedResourceLayout = factory.CreateResourceLayout(_texturedResult!.ResourceLayouts[0]);
-
-            // Create sampler for font atlas (linear filtering for smooth text)
-            _fontAtlasSampler = factory.CreateSampler(new SamplerDescription
-            {
-                AddressModeU = SamplerAddressMode.Clamp,
-                AddressModeV = SamplerAddressMode.Clamp,
-                AddressModeW = SamplerAddressMode.Clamp,
-                Filter = VeldridCompat.LinearFilter,
-                MinimumLod = 0,
-                MaximumLod = 0
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
             });
 
-            var texturedPipelineDesc = new GraphicsPipelineDescription
+            pipelineSet.Textured = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
-                    cullMode: FaceCullMode.None,
-                    fillMode: PolygonFillMode.Solid,
-                    frontFace: FrontFace.CounterClockwise,
-                    depthClipEnabled: true,
-                    scissorTestEnabled: true),
+                    cullMode: FaceCullMode.None, fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _texturedResourceLayout },
-                ShaderSet = new ShaderSetDescription(
-                    new[] { sharedVertexLayout },
-                    _texturedShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
-            };
-
-            _texturedPipeline = factory.CreateGraphicsPipeline(texturedPipelineDesc);
-
-            // === GRADIENT PIPELINE (linear, radial, box gradients) ===
-
-            // Resource layout from bundle (ViewSize + GradientParams)
-            _gradientResourceLayout = factory.CreateResourceLayout(_gradientResult!.ResourceLayouts[0]);
-
-            var gradientPipelineDesc = new GraphicsPipelineDescription
-            {
-                BlendState = VeldridCompat.SingleAlphaBlend,
-                DepthStencilState = DepthStencilDisabledExplicit,
-                RasterizerState = new RasterizerStateDescription(
-                    cullMode: FaceCullMode.None,
-                    fillMode: PolygonFillMode.Solid,
-                    frontFace: FrontFace.CounterClockwise,
-                    depthClipEnabled: true,
-                    scissorTestEnabled: true),
-                PrimitiveTopology = PrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _gradientResourceLayout },
-                ShaderSet = new ShaderSetDescription(
-                    new[] { sharedVertexLayout },
-                    _gradientShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
-            };
-
-            _gradientPipeline = factory.CreateGraphicsPipeline(gradientPipelineDesc);
-
-            // === IMAGE PATTERN PIPELINE (RGBA texture fill with paintMat UV transform) ===
-
-            // Resource layout from bundle (ViewSize + ImagePatternParams + Texture + Sampler)
-            _imagePatternResourceLayout = factory.CreateResourceLayout(_imagePatternResult!.ResourceLayouts[0]);
-
-            // Sampler for image patterns (linear filtering, clamp to edge)
-            _imagePatternSampler = factory.CreateSampler(new SamplerDescription
-            {
-                AddressModeU = SamplerAddressMode.Clamp,
-                AddressModeV = SamplerAddressMode.Clamp,
-                AddressModeW = SamplerAddressMode.Clamp,
-                Filter = VeldridCompat.LinearFilter,
-                MinimumLod = 0,
-                MaximumLod = 0
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _texturedShaders),
+                Outputs = outputDescription
             });
 
-            var imagePatternPipelineDesc = new GraphicsPipelineDescription
+            pipelineSet.Gradient = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = DepthStencilDisabledExplicit,
                 RasterizerState = new RasterizerStateDescription(
-                    cullMode: FaceCullMode.None,
-                    fillMode: PolygonFillMode.Solid,
-                    frontFace: FrontFace.CounterClockwise,
-                    depthClipEnabled: true,
-                    scissorTestEnabled: true),
+                    cullMode: FaceCullMode.None, fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: true),
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _gradientResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _gradientShaders),
+                Outputs = outputDescription
+            });
+
+            pipelineSet.ImagePattern = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = VeldridCompat.SingleAlphaBlend,
+                DepthStencilState = DepthStencilDisabledExplicit,
+                RasterizerState = new RasterizerStateDescription(
+                    cullMode: FaceCullMode.None, fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _imagePatternResourceLayout },
-                ShaderSet = new ShaderSetDescription(
-                    new[] { sharedVertexLayout },
-                    _imagePatternShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
-            };
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _imagePatternShaders),
+                Outputs = outputDescription
+            });
 
-            _imagePatternPipeline = factory.CreateGraphicsPipeline(imagePatternPipelineDesc);
-
-            // === STENCIL FILL PIPELINE (Pass 1: write winding count to stencil, no color output) ===
-            // Non-zero winding rule: front faces increment, back faces decrement.
-            // CullMode must be None so both face orientations contribute to the winding count.
-            // In concave areas where triangles overlap with opposite winding, increments and
-            // decrements cancel to 0, so the cover quad won't draw there.
-            var stencilFillPipelineDesc = new GraphicsPipelineDescription
+            pipelineSet.StencilFill = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = new BlendStateDescription
                 {
@@ -231,9 +218,6 @@ namespace SilkyNvg.Rendering.Veldrid
                     DepthTestEnabled = false,
                     DepthWriteEnabled = false,
                     StencilTestEnabled = true,
-                    // Non-zero winding rule: front faces increment, back faces decrement.
-                    // All three ops set to same value because with DepthTestEnabled=false,
-                    // some drivers route through depthFail instead of pass.
                     StencilFront = new StencilBehaviorDescription(
                         StencilOperation.IncrementAndWrap, StencilOperation.IncrementAndWrap,
                         StencilOperation.IncrementAndWrap, ComparisonKind.Always),
@@ -245,33 +229,19 @@ namespace SilkyNvg.Rendering.Veldrid
                     StencilReference = 0
                 },
                 RasterizerState = new RasterizerStateDescription(
-                    cullMode: FaceCullMode.None,
-                    fillMode: PolygonFillMode.Solid,
-                    frontFace: FrontFace.CounterClockwise,
-                    depthClipEnabled: true,
-                    scissorTestEnabled: true),
+                    cullMode: FaceCullMode.None, fillMode: PolygonFillMode.Solid,
+                    frontFace: FrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
-                ShaderSet = new ShaderSetDescription(
-                    new[] { sharedVertexLayout },
-                    _vertexColorShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
-            };
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
+            });
 
-            _stencilFillPipeline = factory.CreateGraphicsPipeline(stencilFillPipelineDesc);
-
-            // === STENCIL COVER PIPELINES (Pass 2: fill where stencil != 0, then zero stencil) ===
-            // Three variants for the three paint types: solid, gradient, image pattern.
-            // Each uses the same stencil state (NotEqual to 0, zero on pass) but different shaders.
             var stencilCoverRasterizer = new RasterizerStateDescription(
-                cullMode: FaceCullMode.None,
-                fillMode: PolygonFillMode.Solid,
-                frontFace: FrontFace.CounterClockwise,
-                depthClipEnabled: true,
-                scissorTestEnabled: true);
+                cullMode: FaceCullMode.None, fillMode: PolygonFillMode.Solid,
+                frontFace: FrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: true);
 
-            // Solid cover (vertex color only)
-            _stencilCoverSolidPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            pipelineSet.StencilCoverSolid = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
@@ -279,11 +249,10 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
                 ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+                Outputs = outputDescription
             });
 
-            // Gradient cover (gradient shader + stencil test)
-            _stencilCoverGradientPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            pipelineSet.StencilCoverGradient = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
@@ -291,11 +260,10 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _gradientResourceLayout },
                 ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _gradientShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+                Outputs = outputDescription
             });
 
-            // Image pattern cover (image pattern shader + stencil test)
-            _stencilCoverImagePatternPipeline = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            pipelineSet.StencilCoverImagePattern = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = VeldridCompat.SingleAlphaBlend,
                 DepthStencilState = StencilCoverDepthStencilState,
@@ -303,42 +271,56 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _imagePatternResourceLayout },
                 ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _imagePatternShaders),
-                Outputs = _graphicsDevice.SwapchainFramebuffer.OutputDescription
+                Outputs = outputDescription
             });
+
+            return pipelineSet;
         }
 
         private void CreateBuffers()
         {
             var factory = _graphicsDevice.ResourceFactory;
 
-            // Dynamic vertex buffer (will resize as needed)
             _vertexBuffer = factory.CreateBuffer(new BufferDescription(
                 4096 * (uint)Marshal.SizeOf<ShaderLayouts.NvgVertex>(),
                 BufferUsage.VertexBuffer | BufferUsage.Dynamic));
 
-            // View size uniform buffer
             _viewSizeUniformBuffer = factory.CreateBuffer(new BufferDescription(
-                16, // vec2 padded to 16 bytes
-                BufferUsage.UniformBuffer | BufferUsage.Dynamic));
+                16, BufferUsage.UniformBuffer | BufferUsage.Dynamic));
 
-            // Resource set for solid fill pipeline (just view size uniform)
             _viewSizeOnlyResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
                 _viewSizeOnlyResourceLayout,
                 _viewSizeUniformBuffer));
 
-            // Paint uniform buffer — shared by gradient and image pattern pipelines (updated per draw call)
-            // Dynamic for CPU-accessible memory; updated via commandList.UpdateBuffer() for proper sequencing
             _paintUniformBuffer = factory.CreateBuffer(new BufferDescription(
                 (uint)Marshal.SizeOf<ShaderLayouts.PaintUniforms>(),
                 BufferUsage.UniformBuffer | BufferUsage.Dynamic));
 
-            // Resource set for gradient pipeline (viewSize + paint params)
             _gradientResourceSet = factory.CreateResourceSet(new ResourceSetDescription(
                 _gradientResourceLayout,
                 _viewSizeUniformBuffer,
                 _paintUniformBuffer));
 
-            // Create the TextureRegistry now that we have the required Veldrid resources
+            _fontAtlasSampler = factory.CreateSampler(new SamplerDescription
+            {
+                AddressModeU = SamplerAddressMode.Clamp,
+                AddressModeV = SamplerAddressMode.Clamp,
+                AddressModeW = SamplerAddressMode.Clamp,
+                Filter = VeldridCompat.LinearFilter,
+                MinimumLod = 0,
+                MaximumLod = 0
+            });
+
+            _imagePatternSampler = factory.CreateSampler(new SamplerDescription
+            {
+                AddressModeU = SamplerAddressMode.Clamp,
+                AddressModeV = SamplerAddressMode.Clamp,
+                AddressModeW = SamplerAddressMode.Clamp,
+                Filter = VeldridCompat.LinearFilter,
+                MinimumLod = 0,
+                MaximumLod = 0
+            });
+
             _textureRegistry = new TextureRegistry(
                 _graphicsDevice,
                 _texturedResourceLayout!,

@@ -1,4 +1,4 @@
-// Veldrid backend implementation (C)opyright 2026 by David Jeske <davidj@gmail.com>
+﻿// Veldrid backend implementation (C)opyright 2026 by David Jeske <davidj@gmail.com>
 //   co-development with Claude Sonnet 4.5 and Claude Opus 4.6
 // Released under the MIT License.
 
@@ -23,38 +23,38 @@ namespace SilkyNvg.Rendering.Veldrid
     /// </summary>
     ///
     /// <remarks>
-    /// ╔══════════════════════════════════════════════════════════════════════════╗
-    /// ║  CRITICAL: graphicsDevice.UpdateBuffer() vs commandList.UpdateBuffer()  ║
-    /// ╚══════════════════════════════════════════════════════════════════════════╝
+    /// â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+    /// â•‘  CRITICAL: graphicsDevice.UpdateBuffer() vs commandList.UpdateBuffer()  â•‘
+    /// â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     ///
     /// Veldrid has TWO ways to update a GPU buffer. They look identical but have
     /// completely different timing semantics. Using the wrong one causes silent
     /// data corruption that is extremely hard to diagnose.
     ///
-    /// ┌─────────────────────────────────────────────────────────────────────────┐
-    /// │  _graphicsDevice.UpdateBuffer(buffer, offset, data)                    │
-    /// │                                                                         │
-    /// │  IMMEDIATE / GLOBAL — executes NOW, before any command list.            │
-    /// │  The GPU sees the new data immediately. If you call this twice on the   │
-    /// │  same buffer before submitting the command list, the GPU only sees the  │
-    /// │  LAST value for ALL draw calls that reference this buffer.              │
-    /// │                                                                         │
-    /// │  ❌ NEVER USE in Flush() — breaks multi-window rendering!              │
-    /// │  ❌ NEVER FOR: Per-draw-call uniforms (paint params, textures)          │
-    /// │  ✅ USE FOR: One-time resource creation / initialization only           │
-    /// └─────────────────────────────────────────────────────────────────────────┘
+    /// â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+    /// â”‚  _graphicsDevice.UpdateBuffer(buffer, offset, data)                    â”‚
+    /// â”‚                                                                         â”‚
+    /// â”‚  IMMEDIATE / GLOBAL â€” executes NOW, before any command list.            â”‚
+    /// â”‚  The GPU sees the new data immediately. If you call this twice on the   â”‚
+    /// â”‚  same buffer before submitting the command list, the GPU only sees the  â”‚
+    /// â”‚  LAST value for ALL draw calls that reference this buffer.              â”‚
+    /// â”‚                                                                         â”‚
+    /// â”‚  âŒ NEVER USE in Flush() â€” breaks multi-window rendering!              â”‚
+    /// â”‚  âŒ NEVER FOR: Per-draw-call uniforms (paint params, textures)          â”‚
+    /// â”‚  âœ… USE FOR: One-time resource creation / initialization only           â”‚
+    /// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
     ///
-    /// ┌─────────────────────────────────────────────────────────────────────────┐
-    /// │  commandList.UpdateBuffer(buffer, offset, data)                         │
-    /// │                                                                         │
-    /// │  SEQUENCED / PER-COMMAND-LIST — recorded into the command list stream.  │
-    /// │  The GPU sees the data AT THIS POSITION in the command stream.          │
-    /// │  Multiple updates to the same buffer are properly sequenced with draws. │
-    /// │  Each command list carries its own snapshot — safe for multi-window.    │
-    /// │                                                                         │
-    /// │  ✅ USE FOR: ALL per-frame data (viewSize, vertices, paint params)      │
-    /// │  ✅ Ensures each window's command list is self-contained                │
-    /// └─────────────────────────────────────────────────────────────────────────┘
+    /// â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+    /// â”‚  commandList.UpdateBuffer(buffer, offset, data)                         â”‚
+    /// â”‚                                                                         â”‚
+    /// â”‚  SEQUENCED / PER-COMMAND-LIST â€” recorded into the command list stream.  â”‚
+    /// â”‚  The GPU sees the data AT THIS POSITION in the command stream.          â”‚
+    /// â”‚  Multiple updates to the same buffer are properly sequenced with draws. â”‚
+    /// â”‚  Each command list carries its own snapshot â€” safe for multi-window.    â”‚
+    /// â”‚                                                                         â”‚
+    /// â”‚  âœ… USE FOR: ALL per-frame data (viewSize, vertices, paint params)      â”‚
+    /// â”‚  âœ… Ensures each window's command list is self-contained                â”‚
+    /// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
     /// </remarks>
     public sealed partial class VeldridRenderer : INvgRenderer
     {
@@ -64,35 +64,32 @@ namespace SilkyNvg.Rendering.Veldrid
         private readonly GraphicsDevice _graphicsDevice;
         private readonly bool _edgeAntiAlias;
 
-        // Pipeline resources - solid fill (shapes)
-        private Pipeline? _solidFillPipeline;
+        // === Per-OutputDescription pipeline cache ===
+        // Pipelines are target-format-dependent. We lazily create and cache a PipelineSet
+        // for each unique OutputDescription we encounter at Flush() time.
+        private readonly Dictionary<OutputDescription, PipelineSet> _pipelineCache = new();
+        private PipelineSet? _lastUsedPipelineSet; // fast path: avoid dictionary lookup when target doesn't change
+        private OutputDescription _lastUsedOutputDescription;
+
+        // Shared resources (OutputDescription-independent)
         private DeviceBuffer? _vertexBuffer;
         private DeviceBuffer? _viewSizeUniformBuffer;
         private ResourceLayout? _viewSizeOnlyResourceLayout;  // Shared: solidFill + stencilFill + stencilCover
         private ResourceSet? _viewSizeOnlyResourceSet;        // Shared: solidFill + stencilFill + stencilCover
         private Shader[]? _vertexColorShaders;                // Shared: solidFill + stencilFill + stencilCover
 
-        // Pipeline resources - textured (font atlas text rendering)
-        private Pipeline? _texturedPipeline;
+        // Shared resources - textured (font atlas text rendering)
         private ResourceLayout? _texturedResourceLayout;
         private Shader[]? _texturedShaders;
         private Sampler? _fontAtlasSampler;
 
-        // Pipeline resources - gradient (linear, radial, box gradients)
-        private Pipeline? _gradientPipeline;
+        // Shared resources - gradient (linear, radial, box gradients)
         private ResourceLayout? _gradientResourceLayout;
         private ResourceSet? _gradientResourceSet;
         private Shader[]? _gradientShaders;
         private DeviceBuffer? _paintUniformBuffer;
 
-        // Pipeline resources - stencil non-convex fill (two-pass stencil-then-cover)
-        private Pipeline? _stencilFillPipeline;              // Pass 1: write stencil, no color
-        private Pipeline? _stencilCoverSolidPipeline;         // Pass 2 (solid): fill where stencil != 0, clear stencil
-        private Pipeline? _stencilCoverGradientPipeline;      // Pass 2 (gradient): gradient fill where stencil != 0
-        private Pipeline? _stencilCoverImagePatternPipeline;  // Pass 2 (image): image pattern fill where stencil != 0
-
-        // Pipeline resources - image pattern (RGBA texture fill with paintMat UV transform)
-        private Pipeline? _imagePatternPipeline;
+        // Shared resources - image pattern (RGBA texture fill with paintMat UV transform)
         private ResourceLayout? _imagePatternResourceLayout;
         private Shader[]? _imagePatternShaders;
         private Sampler? _imagePatternSampler;
@@ -151,8 +148,8 @@ namespace SilkyNvg.Rendering.Veldrid
                 
                 try
                 {
-                    Console.WriteLine("VeldridRenderer.Create: Creating pipeline");
-                    CreatePipeline();
+                    Console.WriteLine("VeldridRenderer.Create: Creating resource layouts");
+                    CreateResourceLayouts();
                 }
                 catch (Exception pipelineEx)
                 {
@@ -251,67 +248,45 @@ namespace SilkyNvg.Rendering.Veldrid
         {
             _textureRegistry?.Dispose();
 
-            // Dispose solid fill pipeline resources
-            _solidFillPipeline?.Dispose();
+            // Dispose all cached pipeline sets
+            foreach (var kvp in _pipelineCache)
+            {
+                kvp.Value.Dispose();
+            }
+            _pipelineCache.Clear();
+            _lastUsedPipelineSet = null;
+
+            // Dispose shared resource sets
             _viewSizeOnlyResourceSet?.Dispose();
-            _viewSizeOnlyResourceLayout?.Dispose();
-            if (_vertexColorShaders != null)
-            {
-                foreach (var shader in _vertexColorShaders)
-                {
-                    shader.Dispose();
-                }
-            }
-
-            // Dispose textured pipeline resources
-            _texturedPipeline?.Dispose();
-            _texturedResourceLayout?.Dispose();
-            _fontAtlasSampler?.Dispose();
-            if (_texturedShaders != null)
-            {
-                foreach (var shader in _texturedShaders)
-                {
-                    shader.Dispose();
-                }
-            }
-
-            // Dispose gradient pipeline resources
-            _gradientPipeline?.Dispose();
             _gradientResourceSet?.Dispose();
-            _gradientResourceLayout?.Dispose();
-            _paintUniformBuffer?.Dispose();
-            if (_gradientShaders != null)
-            {
-                foreach (var shader in _gradientShaders)
-                {
-                    shader.Dispose();
-                }
-            }
-
-            // Dispose image pattern pipeline resources
-            _imagePatternPipeline?.Dispose();
-            _imagePatternResourceLayout?.Dispose();
-            _imagePatternSampler?.Dispose();
-            if (_imagePatternShaders != null)
-            {
-                foreach (var shader in _imagePatternShaders)
-                {
-                    shader.Dispose();
-                }
-            }
             foreach (var kvp in _imagePatternResourceSetCache)
             {
                 kvp.Value.Dispose();
             }
             _imagePatternResourceSetCache.Clear();
 
-            // Dispose stencil pipelines
-            _stencilFillPipeline?.Dispose();
-            _stencilCoverSolidPipeline?.Dispose();
-            _stencilCoverGradientPipeline?.Dispose();
-            _stencilCoverImagePatternPipeline?.Dispose();
+            // Dispose shared resource layouts
+            _viewSizeOnlyResourceLayout?.Dispose();
+            _texturedResourceLayout?.Dispose();
+            _gradientResourceLayout?.Dispose();
+            _imagePatternResourceLayout?.Dispose();
 
-            // Dispose shared resources
+            // Dispose shared shaders
+            if (_vertexColorShaders != null)
+                foreach (var shader in _vertexColorShaders) shader.Dispose();
+            if (_texturedShaders != null)
+                foreach (var shader in _texturedShaders) shader.Dispose();
+            if (_gradientShaders != null)
+                foreach (var shader in _gradientShaders) shader.Dispose();
+            if (_imagePatternShaders != null)
+                foreach (var shader in _imagePatternShaders) shader.Dispose();
+
+            // Dispose shared samplers
+            _fontAtlasSampler?.Dispose();
+            _imagePatternSampler?.Dispose();
+
+            // Dispose shared buffers
+            _paintUniformBuffer?.Dispose();
             _vertexBuffer?.Dispose();
             _viewSizeUniformBuffer?.Dispose();
         }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Veldrid;
@@ -31,9 +31,20 @@ namespace SilkyNvg.Rendering.Veldrid
 
             var commandList = _activeRenderCommandList;
 
+            // Resolve the correct pipeline set for the current framebuffer's OutputDescription.
+            // This ensures NVG pipelines match whatever render target the caller set up.
+            var currentFramebuffer = commandList.CurrentFramebuffer;
+            if (currentFramebuffer == null)
+            {
+                throw new InvalidOperationException(
+                    "VeldridRenderer.Flush() called but no Framebuffer is set on the active CommandList!\n" +
+                    "You must call commandList.SetFramebuffer(...) before BeginFrame/EndFrame.");
+            }
+            var pipelines = GetOrCreatePipelines(currentFramebuffer.OutputDescription);
+
             // Update view size uniform via commandList (per-command-list sequencing).
             // CRITICAL: Must use commandList.UpdateBuffer, NOT _graphicsDevice.UpdateBuffer!
-            // _graphicsDevice.UpdateBuffer is immediate/global — the last caller wins for ALL pending
+            // _graphicsDevice.UpdateBuffer is immediate/global â€” the last caller wins for ALL pending
             // command lists. In multi-window scenarios, a second window's flush would overwrite the
             // uniform before the first window's command list executes on the GPU.
             // commandList.UpdateBuffer bakes the data into THIS command list's stream, ensuring each
@@ -57,11 +68,11 @@ namespace SilkyNvg.Rendering.Veldrid
             // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);
 
-            // Use viewport dimensions from BeginFrame() — the caller is responsible for setting
+            // Use viewport dimensions from BeginFrame() â€” the caller is responsible for setting
             // the correct framebuffer on the command list (via commandList.SetFramebuffer()) before
             // calling BeginFrame/EndFrame. This matches the OpenGL backend pattern where the caller
             // binds the correct GL context/framebuffer.
-            // NOTE: Do NOT use _graphicsDevice.SwapchainFramebuffer — that's always the main
+            // NOTE: Do NOT use _graphicsDevice.SwapchainFramebuffer â€” that's always the main
             // swapchain. For multi-window rendering, each window has its own framebuffer.
             uint framebufferPixelWidth = (uint)(_viewportSize.Width * _devicePixelRatio);
             uint framebufferPixelHeight = (uint)(_viewportSize.Height * _devicePixelRatio);
@@ -80,7 +91,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 switch (drawCall.Type) {
                     case DrawCallType.SolidFill:
                         if (lastPipelineType != DrawCallType.SolidFill) {
-                            commandList.SetPipeline(_solidFillPipeline);
+                            commandList.SetPipeline(pipelines.SolidFill);
                             commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                             lastPipelineType = DrawCallType.SolidFill;
                             lastBoundTextureId = -1;
@@ -91,7 +102,7 @@ namespace SilkyNvg.Rendering.Veldrid
                         if (lastPipelineType != DrawCallType.Textured || drawCall.TextureId != lastBoundTextureId) {
                             var texturedResourceSet = _textureRegistry.GetOrCreateTexturedResourceSet(drawCall.TextureId);
                             if (lastPipelineType != DrawCallType.Textured) {
-                                commandList.SetPipeline(_texturedPipeline);
+                                commandList.SetPipeline(pipelines.Textured);
                                 lastPipelineType = DrawCallType.Textured;
                             }
                             commandList.SetGraphicsResourceSet(0, texturedResourceSet);
@@ -103,7 +114,7 @@ namespace SilkyNvg.Rendering.Veldrid
                         // Update paint uniform buffer via command list for proper per-draw-call sequencing
                         commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
                         if (lastPipelineType != DrawCallType.Gradient) {
-                            commandList.SetPipeline(_gradientPipeline);
+                            commandList.SetPipeline(pipelines.Gradient);
                             lastPipelineType = DrawCallType.Gradient;
                         }
                         commandList.SetGraphicsResourceSet(0, _gradientResourceSet);
@@ -114,7 +125,7 @@ namespace SilkyNvg.Rendering.Veldrid
                         // Update paint uniform buffer via command list for proper per-draw-call sequencing
                         commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
                         if (lastPipelineType != DrawCallType.ImagePattern) {
-                            commandList.SetPipeline(_imagePatternPipeline);
+                            commandList.SetPipeline(pipelines.ImagePattern);
                             lastPipelineType = DrawCallType.ImagePattern;
                         }
                         // Get or create cached resource set for this texture
@@ -158,7 +169,7 @@ namespace SilkyNvg.Rendering.Veldrid
 
                     // Pass 1: Write winding count to stencil buffer (no color output)
                     // Front faces increment, back faces decrement (non-zero winding rule)
-                    commandList.SetPipeline(_stencilFillPipeline);
+                    commandList.SetPipeline(pipelines.StencilFill);
                     commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                     commandList.Draw(
                         (uint)drawCall.StencilFillVertexCount, 1,
@@ -169,12 +180,12 @@ namespace SilkyNvg.Rendering.Veldrid
                     switch (drawCall.NonConvexCoverPaintType) {
                         case DrawCallType.Gradient:
                             commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
-                            commandList.SetPipeline(_stencilCoverGradientPipeline);
+                            commandList.SetPipeline(pipelines.StencilCoverGradient);
                             commandList.SetGraphicsResourceSet(0, _gradientResourceSet);
                             break;
                         case DrawCallType.ImagePattern:
                             commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
-                            commandList.SetPipeline(_stencilCoverImagePatternPipeline);
+                            commandList.SetPipeline(pipelines.StencilCoverImagePattern);
                             if (!_imagePatternResourceSetCache.TryGetValue(drawCall.TextureId, out var coverImagePatternResourceSet)) {
                                 var coverPatternTextureView = _textureRegistry.GetTextureView(drawCall.TextureId);
                                 coverImagePatternResourceSet = _graphicsDevice.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
@@ -188,7 +199,7 @@ namespace SilkyNvg.Rendering.Veldrid
                             commandList.SetGraphicsResourceSet(0, coverImagePatternResourceSet);
                             break;
                         default: // SolidFill
-                            commandList.SetPipeline(_stencilCoverSolidPipeline);
+                            commandList.SetPipeline(pipelines.StencilCoverSolid);
                             commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                             break;
                     }

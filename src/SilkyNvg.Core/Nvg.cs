@@ -82,6 +82,17 @@ namespace SilkyNvg
 
         #region Frames
         /// <summary>
+        /// Sets the device pixel ratio (DPI scale) for text measurement, tessellation tolerances,
+        /// and fringe width calculations. This value is "sticky" — once set, it persists across frames.
+        /// <para>Call this before <see cref="BeginFrame(SizeF, float)"/> if you need DPI-aware layout
+        /// or text measurement without starting a render frame.</para>
+        /// <para><see cref="BeginFrame(SizeF, float)"/> will override this value with its own
+        /// <c>devicePixelRatio</c> parameter.</para>
+        /// </summary>
+        /// <param name="dpiScale">Device pixel ratio (e.g. 2.0 for Retina/HiDPI displays).</param>
+        public void SetDpiScale(float dpiScale) => pixelRatio.SetDevicePixelRatio(dpiScale);
+
+        /// <summary>
         /// Begin drawing a new frame.<br/>
         /// Calls to NanoVG drawing API should be wrapped in <see cref="BeginFrame(SizeF, float)"/> and <see cref="EndFrame()"/>.
         /// <para><see cref="BeginFrame(SizeF, float)"/> defines the size of the window to render to in relation currently

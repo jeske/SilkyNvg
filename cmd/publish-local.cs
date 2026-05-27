@@ -1,7 +1,6 @@
 #!/usr/bin/env dotnet run
-// publish-local.cs — Build release packages and deploy to local NuGet feed
+// publish-local.cs — Cross-platform build+pack+deploy to local NuGet feed
 //
-// Cross-platform replacement for publish-local.ps1.
 // Versioning is timestamp-based (v2) — every build gets a unique version
 // automatically via Silky.shared.Build.props. No version files to manage.
 // The timestamp is captured once here and passed to MSBuild so all projects
@@ -10,8 +9,8 @@
 // Requires: LOCAL_NUGET_REPO environment variable must be set
 //
 // Usage:
-//   dotnet run cmd/unix-publish-local.cs              # build + pack + deploy
-//   dotnet run cmd/unix-publish-local.cs --dry-run    # show what would happen, don't build
+//   dotnet run cmd/publish-local.cs              # build + pack + deploy
+//   dotnet run cmd/publish-local.cs --dry-run    # show what would happen, don't build
 
 using System.Diagnostics;
 
@@ -19,12 +18,12 @@ using System.Diagnostics;
 bool dryRun = args.Any(a => a is "--dry-run" or "-n");
 
 // ── Resolve project root (the script lives in cmd/) ─────────────────────
-// When invoked via `dotnet run cmd/unix-publish-local.cs` from the repo root,
+// When invoked via `dotnet run cmd/publish-local.cs` from the repo root,
 // the working directory is the repo root. But handle running from cmd/ too.
 string scriptDir = Path.GetDirectoryName(Path.GetFullPath(
     AppContext.BaseDirectory.Contains("publish-local")
-        ? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "cmd", "unix-publish-local.cs")
-        : "cmd/unix-publish-local.cs"))!;
+        ? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "cmd", "publish-local.cs")
+        : "cmd/publish-local.cs"))!;
 string projectRoot = Path.GetFullPath(Path.Combine(scriptDir, ".."));
 
 // Fallback: if SilkyNvg.sln isn't at projectRoot, use current directory

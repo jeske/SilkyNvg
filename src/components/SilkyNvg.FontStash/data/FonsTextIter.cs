@@ -1,4 +1,4 @@
-﻿namespace FontStash.NET
+namespace FontStash.NET
 {
     public struct FonsTextIter
     {
@@ -8,9 +8,9 @@
         public short isize, iblur;
         public FonsFont font;
         public int prevGlyphIndex;
-        public string str;
-        public string next;
-        public string end;
+        public int strIndex;
+        public int nextIndex;
+        public int endIndex;
         public uint utf8state;
         public FonsGlyphBitmap bitmapOption;
 

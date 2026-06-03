@@ -1,4 +1,4 @@
-﻿using FontStash.NET;
+using FontStash.NET;
 using SilkyNvg.Common;
 using SilkyNvg.Core.States;
 using SilkyNvg.Rendering;
@@ -190,10 +190,12 @@ namespace SilkyNvg.Text
             nvg.stateStack.CurrentState.FontId = fons.GetFontByName(font);
         }
 
+        #region Text Draw
+
         /// <summary>
-        /// Draws text string at specified location. Only the sub-string up to the end is drawn.
+        /// Draws text at specified location from a ReadOnlySpan&lt;char&gt;. Zero-allocation on the draw path.
         /// </summary>
-        public static float Text(this Nvg nvg, Vector2 pos, string @string, string end)
+        public static float Text(this Nvg nvg, Vector2 pos, ReadOnlySpan<char> @string)
         {
             Fontstash fons = nvg.fontManager.Fontstash;
             State state = nvg.stateStack.CurrentState;
@@ -217,9 +219,9 @@ namespace SilkyNvg.Text
 
             List<Vertex> vertices = new();
             Span<Vector2> c = stackalloc Vector2[4];
-            fons.TextIterInit(out FonsTextIter iter, pos.X * scale, pos.Y * scale, @string, end, FonsGlyphBitmap.Requiered);
+            fons.TextIterInit(out FonsTextIter iter, pos.X * scale, pos.Y * scale, @string, FonsGlyphBitmap.Requiered);
             FonsTextIter prevIter = iter;
-            while (fons.TextIterNext(ref iter, ref q))
+            while (fons.TextIterNext(ref iter, @string, ref q))
             {
                 c[0] = c[1] = c[2] = c[3] = default; // Clear cache
                 if (iter.prevGlyphIndex == -1)
@@ -234,7 +236,7 @@ namespace SilkyNvg.Text
                         break;
                     }
                     iter = prevIter;
-                    _ = fons.TextIterNext(ref iter, ref q);
+                    _ = fons.TextIterNext(ref iter, @string, ref q);
                     if (iter.prevGlyphIndex == -1)
                     {
                         break;
@@ -271,11 +273,17 @@ namespace SilkyNvg.Text
             return iter.nextx / scale;
         }
 
-        /// <inheritdoc cref="Text(Nvg, Vector2, string, string)"/>
+        /// <summary>
+        /// Draws text string at specified location. Only the sub-string up to the end is drawn.
+        /// </summary>
+        public static float Text(this Nvg nvg, Vector2 pos, string @string, string end)
+            => Text(nvg, pos, end != null ? @string.AsSpan(0, @string.IndexOf(end, StringComparison.Ordinal)) : @string.AsSpan());
+
+        /// <inheritdoc cref="Text(Nvg, Vector2, ReadOnlySpan{char})"/>
         public static float Text(this Nvg nvg, PointF pos, string @string, string end)
             => Text(nvg, pos.ToVector2(), @string, end);
 
-        /// <inheritdoc cref="Text(Nvg, Vector2, string, string)"/>
+        /// <inheritdoc cref="Text(Nvg, Vector2, ReadOnlySpan{char})"/>
         public static float Text(this Nvg nvg, float x, float y, string @string, string end)
             => Text(nvg, new Vector2(x, y), @string, end);
 
@@ -283,15 +291,27 @@ namespace SilkyNvg.Text
         /// Draws text string at specified location.
         /// </summary>
         public static float Text(this Nvg nvg, Vector2 pos, string @string)
-            => Text(nvg, pos, @string, null);
+            => Text(nvg, pos, @string.AsSpan());
 
-        /// <inheritdoc cref="Text(Nvg, Vector2, string)"/>
+        /// <inheritdoc cref="Text(Nvg, Vector2, ReadOnlySpan{char})"/>
         public static float Text(this Nvg nvg, PointF pos, string @string)
-            => Text(nvg, pos.ToVector2(), @string, null);
+            => Text(nvg, pos.ToVector2(), @string.AsSpan());
 
-        /// <inheritdoc cref="Text(Nvg, Vector2, string)"/>
+        /// <inheritdoc cref="Text(Nvg, Vector2, ReadOnlySpan{char})"/>
         public static float Text(this Nvg nvg, float x, float y, string @string)
-            => Text(nvg, new Vector2(x, y), @string, null);
+            => Text(nvg, new Vector2(x, y), @string.AsSpan());
+
+        /// <inheritdoc cref="Text(Nvg, Vector2, ReadOnlySpan{char})"/>
+        public static float Text(this Nvg nvg, PointF pos, ReadOnlySpan<char> @string)
+            => Text(nvg, pos.ToVector2(), @string);
+
+        /// <inheritdoc cref="Text(Nvg, Vector2, ReadOnlySpan{char})"/>
+        public static float Text(this Nvg nvg, float x, float y, ReadOnlySpan<char> @string)
+            => Text(nvg, new Vector2(x, y), @string);
+
+        #endregion
+
+        #region TextBox
 
         /// <summary>
         /// Draws multi-line text string at specified location wrapped at the specified width. Only the sub-string up to the end is drawn.
@@ -315,25 +335,29 @@ namespace SilkyNvg.Text
 
             state.TextAlign = Align.Left | vAlign;
 
-            while ((rowCount = TextBreakLines(nvg, @string, end, breakRowWidth, out TextRow[] rows, 2)) != 0)
+            ReadOnlySpan<char> span = end != null ? @string.AsSpan(0, @string.IndexOf(end, StringComparison.Ordinal)) : @string.AsSpan();
+            int startIndex = 0;
+
+            while ((rowCount = TextBreakLines(nvg, span, startIndex, breakRowWidth, out TextRow[] rows, 2)) != 0)
             {
                 for (int i = 0; i < rowCount; i++)
                 {
+                    ReadOnlySpan<char> rowSpan = span.Slice(rows[i].StartIndex, rows[i].EndIndex - rows[i].StartIndex);
                     if (hAlign.HasFlag(Align.Left))
                     {
-                        _ = Text(nvg, pos, rows[i].Start, rows[i].End.Length > 0 ? rows[i].End : null) ;
+                        _ = Text(nvg, pos, rowSpan);
                     }
                     else if (hAlign.HasFlag(Align.Centre))
                     {
-                        _ = Text(nvg, pos.X + breakRowWidth * 0.5f, pos.Y - rows[i].Width * 0.5f, rows[i].Start, rows[i].End.Length > 0 ? rows[i].End : null);
+                        _ = Text(nvg, pos.X + breakRowWidth * 0.5f, pos.Y - rows[i].Width * 0.5f, rowSpan);
                     }
                     else if (hAlign.HasFlag(Align.Right))
                     {
-                        _ = Text(nvg, pos.X + breakRowWidth - rows[i].Width, pos.Y, rows[i].Start, rows[i].End.Length > 0 ? rows[i].End : null);
+                        _ = Text(nvg, pos.X + breakRowWidth - rows[i].Width, pos.Y, rowSpan);
                     }
                     pos.Y += lineh * state.LineHeight;
                 }
-                @string = rows[rowCount - 1].Next;
+                startIndex = rows[rowCount - 1].NextIndex;
             }
 
             state.TextAlign = oldAlign;
@@ -362,13 +386,17 @@ namespace SilkyNvg.Text
         public static void TextBox(this Nvg nvg, float x, float y, float breakRowWidth, string @string)
             => TextBox(nvg, new Vector2(x, y), breakRowWidth, @string, null);
 
+        #endregion
+
+        #region TextBounds
+
         /// <summary>
         /// Measures the specified text string. Parameter bounds contains the bounds of the text.<br/>
         /// Measured values are returned in local coordinate space.
         /// </summary>
         /// <param name="bounds">Contains the bounds of the text when returned.</param>
         /// <returns>The horizontal advance of the measured text (i.e. where the next character should be drawn).</returns>
-        public static float TextBounds(this Nvg nvg, Vector2 pos, string @string, string end, out RectangleF bounds)
+        public static float TextBounds(this Nvg nvg, Vector2 pos, ReadOnlySpan<char> @string, out RectangleF bounds)
         {
             bounds = new RectangleF((PointF)pos, SizeF.Empty);
 
@@ -388,7 +416,7 @@ namespace SilkyNvg.Text
             fons.SetAlign((int)state.TextAlign);
             fons.SetFont(state.FontId);
 
-            float width = fons.TextBounds(pos.X * scale, pos.Y * scale, @string, end, out float[] bs);
+            float width = fons.TextBounds(pos.X * scale, pos.Y * scale, @string, out float[] bs);
             if (bs != null)
             {
                 fons.LineBounds(pos.Y * scale, out bs[1], out bs[3]);
@@ -402,25 +430,41 @@ namespace SilkyNvg.Text
             return width * invscale;
         }
 
-        /// <inheritdoc cref="TextBounds(Nvg, Vector2, string, string, out RectangleF)"/>
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
+        public static float TextBounds(this Nvg nvg, Vector2 pos, string @string, string end, out RectangleF bounds)
+            => TextBounds(nvg, pos, end != null ? @string.AsSpan(0, @string.IndexOf(end, StringComparison.Ordinal)) : @string.AsSpan(), out bounds);
+
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
         public static float TextBounds(this Nvg nvg, PointF pos, string @string, string end, out RectangleF bounds)
             => TextBounds(nvg, pos.ToVector2(), @string, end, out bounds);
 
-        /// <inheritdoc cref="TextBounds(Nvg, Vector2, string, string, out RectangleF)"/>
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
         public static float TextBounds(this Nvg nvg, float x, float y, string @string, string end, out RectangleF bounds)
             => TextBounds(nvg, new Vector2(x, y), @string, end, out bounds);
 
-        /// <inheritdoc cref="TextBounds(Nvg, Vector2, string, string, out RectangleF)"/>
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
         public static float TextBounds(this Nvg nvg, Vector2 pos, string @string, out RectangleF bounds)
-            => TextBounds(nvg, pos, @string, null, out bounds);
+            => TextBounds(nvg, pos, @string.AsSpan(), out bounds);
 
-        /// <inheritdoc cref="TextBounds(Nvg, Vector2, string, string, out RectangleF)"/>
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
         public static float TextBounds(this Nvg nvg, PointF pos, string @string, out RectangleF bounds)
-            => TextBounds(nvg, pos, @string, null, out bounds);
+            => TextBounds(nvg, pos.ToVector2(), @string.AsSpan(), out bounds);
 
-        /// <inheritdoc cref="TextBounds(Nvg, Vector2, string, string, out RectangleF)"/>
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
         public static float TextBounds(this Nvg nvg, float x, float y, string @string, out RectangleF bounds)
-            => TextBounds(nvg, new Vector2(x, y), @string, null, out bounds);
+            => TextBounds(nvg, new Vector2(x, y), @string.AsSpan(), out bounds);
+
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
+        public static float TextBounds(this Nvg nvg, PointF pos, ReadOnlySpan<char> @string, out RectangleF bounds)
+            => TextBounds(nvg, pos.ToVector2(), @string, out bounds);
+
+        /// <inheritdoc cref="TextBounds(Nvg, Vector2, ReadOnlySpan{char}, out RectangleF)"/>
+        public static float TextBounds(this Nvg nvg, float x, float y, ReadOnlySpan<char> @string, out RectangleF bounds)
+            => TextBounds(nvg, new Vector2(x, y), @string, out bounds);
+
+        #endregion
+
+        #region TextBoxBounds
 
         /// <summary>
         /// Measures the specified multi-text string.<br/>
@@ -460,7 +504,10 @@ namespace SilkyNvg.Text
             rMinY *= invscale;
             rMaxY *= invscale;
 
-            while ((nrows = TextBreakLines(nvg, @string, end, breakRowWidth, out TextRow[] rows, 2)) != 0)
+            ReadOnlySpan<char> span = end != null ? @string.AsSpan(0, @string.IndexOf(end, StringComparison.Ordinal)) : @string.AsSpan();
+            int startIndex = 0;
+
+            while ((nrows = TextBreakLines(nvg, span, startIndex, breakRowWidth, out TextRow[] rows, 2)) != 0)
             {
                 for (uint i = 0; i < nrows; i++)
                 {
@@ -488,7 +535,7 @@ namespace SilkyNvg.Text
 
                     pos.Y += lineh * state.LineHeight;
                 }
-                @string = rows[nrows - 1].Next;
+                startIndex = rows[nrows - 1].NextIndex;
             }
 
             state.TextAlign = oldAlign;
@@ -516,11 +563,15 @@ namespace SilkyNvg.Text
         public static void TextBoxBounds(this Nvg nvg, float x, float y, float breakRowWidth, string @string, out RectangleF bounds)
             => TextBoxBounds(nvg, new Vector2(x, y), breakRowWidth, @string, null, out bounds);
 
+        #endregion
+
+        #region TextGlyphPositions
+
         /// <summary>
         /// Calculates the glyph x positions of the specified text. Only the sub-string will be used.<br/>
         /// Measures values are returned in local coordinate space.
         /// </summary>
-        public static int TextGlyphPositions(this Nvg nvg, Vector2 pos, string @string, string end, out GlyphPosition[] positions, int maxRows)
+        public static int TextGlyphPositions(this Nvg nvg, Vector2 pos, ReadOnlySpan<char> @string, out GlyphPosition[] positions, int maxRows)
         {
             positions = new GlyphPosition[maxRows];
 
@@ -536,7 +587,7 @@ namespace SilkyNvg.Text
                 return 0;
             }
 
-            if (@string == end)
+            if (@string.Length == 0)
             {
                 return 0;
             }
@@ -547,17 +598,17 @@ namespace SilkyNvg.Text
             fons.SetAlign((int)state.TextAlign);
             fons.SetFont(state.FontId);
 
-            fons.TextIterInit(out FonsTextIter iter, pos.X * scale, pos.Y * scale, @string, end, FonsGlyphBitmap.Optional);
+            fons.TextIterInit(out FonsTextIter iter, pos.X * scale, pos.Y * scale, @string, FonsGlyphBitmap.Optional);
             FonsTextIter prevIter = iter;
-            while (fons.TextIterNext(ref iter, ref q))
+            while (fons.TextIterNext(ref iter, @string, ref q))
             {
                 if (iter.prevGlyphIndex < 0 && nvg.fontManager.AllocTextAtlas())
                 {
                     iter = prevIter;
-                    fons.TextIterNext(ref iter, ref q);
+                    fons.TextIterNext(ref iter, @string, ref q);
                 }
                 prevIter = iter;
-                positions[npos++] = new GlyphPosition(iter.str, iter.x * invscale, MathF.Min(iter.x, q.x0) * invscale, MathF.Max(iter.nextx, q.x1) * invscale);
+                positions[npos++] = new GlyphPosition(iter.strIndex, iter.x * invscale, MathF.Min(iter.x, q.x0) * invscale, MathF.Max(iter.nextx, q.x1) * invscale);
                 if (npos >= maxRows)
                 {
                     return npos;
@@ -567,14 +618,21 @@ namespace SilkyNvg.Text
             return npos;
         }
 
-        /// <inheritdoc cref="TextGlyphPositions(Nvg, Vector2, string, string, out GlyphPosition[], int)"/>
+        /// <inheritdoc cref="TextGlyphPositions(Nvg, Vector2, ReadOnlySpan{char}, out GlyphPosition[], int)"/>
+        public static int TextGlyphPositions(this Nvg nvg, Vector2 pos, string @string, string end, out GlyphPosition[] positions, int maxRows)
+            => TextGlyphPositions(nvg, pos, end != null ? @string.AsSpan(0, @string.IndexOf(end, StringComparison.Ordinal)) : @string.AsSpan(), out positions, maxRows);
+
+        /// <inheritdoc cref="TextGlyphPositions(Nvg, Vector2, ReadOnlySpan{char}, out GlyphPosition[], int)"/>
         public static int TextGlyphPositions(this Nvg nvg, PointF pos, string @string, string end, out GlyphPosition[] positions, int maxRows)
             => TextGlyphPositions(nvg, pos.ToVector2(), @string, end, out positions, maxRows);
 
-        /// <inheritdoc cref="TextGlyphPositions(Nvg, Vector2, string, string, out GlyphPosition[], int)"/>
+        /// <inheritdoc cref="TextGlyphPositions(Nvg, Vector2, ReadOnlySpan{char}, out GlyphPosition[], int)"/>
         public static int TextGlyphPositions(this Nvg nvg, float x, float y, string @string, string end, out GlyphPosition[] positions, int maxRows)
             => TextGlyphPositions(nvg, new Vector2(x, y), @string, end, out positions, maxRows);
 
+        #endregion
+
+        #region TextMetrics
 
         /// <summary>
         /// Returns the vertical metrics based on the current text style.<br/>
@@ -605,12 +663,16 @@ namespace SilkyNvg.Text
             lineh *= invscale;
         }
 
+        #endregion
+
+        #region TextBreakLines
+
         /// <summary>
-        /// Breaks the specified text into lines. Only the sub-string will be used.<br/>
+        /// Breaks the specified text into lines.<br/>
         /// White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.<br/>
         /// Words longer than the max width are slit at nearest character (i.e. no hyphenation).
         /// </summary>
-        public static int TextBreakLines(this Nvg nvg, string @string, string end, float breakRowWidth, out TextRow[] rows, int maxRows)
+        public static int TextBreakLines(this Nvg nvg, ReadOnlySpan<char> @string, int startIndex, float breakRowWidth, out TextRow[] rows, int maxRows)
         {
             rows = new TextRow[maxRows];
 
@@ -625,12 +687,12 @@ namespace SilkyNvg.Text
             float rowWidth = 0.0f;
             float rowMinX = 0.0f;
             float rowMaxX = 0.0f;
-            string rowStart = null;
-            string rowEnd = null;
-            string wordStart = null;
+            int rowStartIdx = -1;
+            int rowEndIdx = -1;
+            int wordStartIdx = -1;
             float wordStartX = 0.0f;
             float wordMinX = 0.0f;
-            string breakEnd = null;
+            int breakEndIdx = -1;
             float breakWidth = 0.0f;
             float breakMaxX = 0.0f;
             CodepointType type, pType = CodepointType.Space;
@@ -646,7 +708,8 @@ namespace SilkyNvg.Text
                 return 0;
             }
 
-            if (@string == end || @string.Length == 0)
+            ReadOnlySpan<char> span = @string.Slice(startIndex);
+            if (span.Length == 0)
             {
                 return 0;
             }
@@ -659,14 +722,14 @@ namespace SilkyNvg.Text
 
             breakRowWidth *= scale;
 
-            fons.TextIterInit(out FonsTextIter iter, 0, 0, @string, end, FonsGlyphBitmap.Optional);
+            fons.TextIterInit(out FonsTextIter iter, 0, 0, span, FonsGlyphBitmap.Optional);
             FonsTextIter prevIter = iter;
-            while (fons.TextIterNext(ref iter, ref q))
+            while (fons.TextIterNext(ref iter, span, ref q))
             {
                 if (iter.prevGlyphIndex < 0 && nvg.fontManager.AllocTextAtlas())
                 {
                     iter = prevIter;
-                    fons.TextIterNext(ref iter, ref q);
+                    fons.TextIterNext(ref iter, span, ref q);
                 }
                 prevIter = iter;
                 switch (iter.codepoint)
@@ -708,12 +771,12 @@ namespace SilkyNvg.Text
                 {
                     rows[nrows++] = new TextRow()
                     {
-                        Start = rowStart ?? iter.str,
-                        End = rowEnd ?? iter.str,
+                        StartIndex = startIndex + (rowStartIdx >= 0 ? rowStartIdx : iter.strIndex),
+                        EndIndex = startIndex + (rowEndIdx >= 0 ? rowEndIdx : iter.strIndex),
                         Width = rowWidth * invscale,
                         MinX = rowMinX * invscale,
                         MaxX = rowMaxX * invscale,
-                        Next = iter.next
+                        NextIndex = startIndex + iter.nextIndex
                     };
 
                     if (nrows >= maxRows)
@@ -721,32 +784,32 @@ namespace SilkyNvg.Text
                         return nrows;
                     }
 
-                    breakEnd = rowStart;
+                    breakEndIdx = rowStartIdx;
                     breakWidth = 0.0f;
                     breakMaxX = 0.0f;
 
-                    rowStart = null;
-                    rowEnd = null;
+                    rowStartIdx = -1;
+                    rowEndIdx = -1;
                     rowWidth = 0.0f;
                     rowMinX = rowMaxX = 0.0f;
                 }
                 else
                 {
-                    if (rowStart == null)
+                    if (rowStartIdx < 0)
                     {
                         if (type == CodepointType.Char || type == CodepointType.CJKChar)
                         {
                             rowStartX = iter.x;
-                            rowStart = iter.str;
-                            rowEnd = iter.next;
+                            rowStartIdx = iter.strIndex;
+                            rowEndIdx = iter.nextIndex;
                             rowWidth = iter.nextx - rowStartX;
                             rowMinX = q.x0 - rowStartX;
                             rowMaxX = q.x1 - rowStartX;
-                            wordStart = iter.str;
+                            wordStartIdx = iter.strIndex;
                             wordStartX = iter.x;
                             wordMinX = q.x0 - rowStartX;
 
-                            breakEnd = rowStart;
+                            breakEndIdx = rowStartIdx;
                             breakWidth = 0.0f;
                             breakMaxX = 0.0f;
                         }
@@ -757,37 +820,37 @@ namespace SilkyNvg.Text
 
                         if (type == CodepointType.Char || type == CodepointType.CJKChar)
                         {
-                            rowEnd = iter.next;
+                            rowEndIdx = iter.nextIndex;
                             rowWidth = iter.nextx - rowStartX;
                             rowMaxX = q.x1 - rowStartX;
                         }
 
                         if (((pType == CodepointType.Char || pType == CodepointType.CJKChar) && type == CodepointType.Space) || type == CodepointType.CJKChar)
                         {
-                            breakEnd = iter.str;
+                            breakEndIdx = iter.strIndex;
                             breakWidth = rowWidth;
                             breakMaxX = rowMaxX;
                         }
 
                         if ((pType == CodepointType.Space && (type == CodepointType.Char || type == CodepointType.CJKChar)) || type == CodepointType.CJKChar)
                         {
-                            wordStart = iter.str;
+                            wordStartIdx = iter.strIndex;
                             wordStartX = iter.x;
                             wordMinX = q.x0;
                         }
 
                         if ((type == CodepointType.Char || type == CodepointType.CJKChar) && nextWidth > breakRowWidth)
                         {
-                            if (breakEnd == rowStart)
+                            if (breakEndIdx == rowStartIdx)
                             {
                                 rows[nrows++] = new TextRow()
                                 {
-                                    Start = rowStart,
-                                    End = iter.str,
+                                    StartIndex = startIndex + rowStartIdx,
+                                    EndIndex = startIndex + iter.strIndex,
                                     Width = rowWidth * invscale,
                                     MinX = rowMinX * invscale,
                                     MaxX = rowMaxX * invscale,
-                                    Next = iter.str
+                                    NextIndex = startIndex + iter.strIndex
                                 };
 
                                 if (nrows >= maxRows)
@@ -796,12 +859,12 @@ namespace SilkyNvg.Text
                                 }
 
                                 rowStartX = iter.x;
-                                rowStart = iter.str;
-                                rowEnd = iter.next;
+                                rowStartIdx = iter.strIndex;
+                                rowEndIdx = iter.nextIndex;
                                 rowWidth = iter.nextx - rowStartX;
                                 rowMinX = q.x0 - rowStartX;
                                 rowMaxX = q.x1 - rowStartX;
-                                wordStart = iter.str;
+                                wordStartIdx = iter.strIndex;
                                 wordStartX = iter.x;
                                 wordMinX = q.x0 - rowStartX;
                             }
@@ -809,12 +872,12 @@ namespace SilkyNvg.Text
                             {
                                 rows[nrows++] = new TextRow()
                                 {
-                                    Start = rowStart,
-                                    End = breakEnd,
+                                    StartIndex = startIndex + rowStartIdx,
+                                    EndIndex = startIndex + breakEndIdx,
                                     Width = breakWidth * invscale,
                                     MinX = rowMinX * invscale,
                                     MaxX = breakMaxX * invscale,
-                                    Next = wordStart
+                                    NextIndex = startIndex + wordStartIdx
                                 };
 
                                 if (nrows >= maxRows)
@@ -823,14 +886,14 @@ namespace SilkyNvg.Text
                                 }
 
                                 rowStartX = wordStartX;
-                                rowStart = wordStart;
-                                rowEnd = iter.next;
+                                rowStartIdx = wordStartIdx;
+                                rowEndIdx = iter.nextIndex;
                                 rowWidth = iter.nextx - rowStartX;
                                 rowMinX = wordMinX - rowStartX;
                                 rowMaxX = q.x1 - rowStartX;
                             }
 
-                            breakEnd = rowStart;
+                            breakEndIdx = rowStartIdx;
                             breakWidth = 0.0f;
                             breakMaxX = 0.0f;
                         }
@@ -841,16 +904,16 @@ namespace SilkyNvg.Text
                 pType = type;
             }
 
-            if (rowStart != null)
+            if (rowStartIdx >= 0)
             {
                 rows[nrows++] = new TextRow()
                 {
-                    Start = rowStart,
-                    End = rowEnd,
+                    StartIndex = startIndex + rowStartIdx,
+                    EndIndex = startIndex + rowEndIdx,
                     Width = rowWidth * invscale,
                     MinX = rowMinX * invscale,
                     MaxX = rowMaxX * invscale,
-                    Next = end
+                    NextIndex = startIndex + span.Length
                 };
             }
 
@@ -862,8 +925,31 @@ namespace SilkyNvg.Text
         /// White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.<br/>
         /// Words longer than the max width are slit at nearest character (i.e. no hyphenation).
         /// </summary>
+        public static int TextBreakLines(this Nvg nvg, string @string, string end, float breakRowWidth, out TextRow[] rows, int maxRows)
+        {
+            ReadOnlySpan<char> span = end != null ? @string.AsSpan(0, @string.IndexOf(end, StringComparison.Ordinal)) : @string.AsSpan();
+            int result = TextBreakLines(nvg, span, 0, breakRowWidth, out rows, maxRows);
+
+            // Populate legacy string properties for backwards compatibility
+            for (int i = 0; i < result; i++)
+            {
+                rows[i].Start = @string.Substring(rows[i].StartIndex);
+                rows[i].End = @string.Substring(rows[i].EndIndex);
+                rows[i].Next = @string.Substring(rows[i].NextIndex);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Breaks the specified text into lines.<br/>
+        /// White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.<br/>
+        /// Words longer than the max width are slit at nearest character (i.e. no hyphenation).
+        /// </summary>
         public static int TextBreakLines(this Nvg nvg, string @string, float breakRowWidth, out TextRow[] rows, int maxRows)
             => TextBreakLines(nvg, @string, null, breakRowWidth, out rows, maxRows);
+
+        #endregion
 
     }
 }

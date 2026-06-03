@@ -1049,6 +1049,18 @@ namespace NvgExample
 
             DrawScissor(50.0f, height - 80.0f, t);
 
+            // Demonstrate zero-allocation span-based text rendering
+            {
+                _nvg.Save();
+                _nvg.FontSize(14.0f);
+                _nvg.FontFace("sans");
+                _nvg.TextAlign(Align.Left | Align.Bottom);
+                _nvg.FillColour(_nvg.Rgba(200, 200, 200, 160));
+                ReadOnlySpan<char> spanText = "Rendered via ReadOnlySpan<char> \u2014 zero alloc";
+                _ = _nvg.Text(5.0f, height - 5.0f, spanText);
+                _nvg.Restore();
+            }
+
             _nvg.Save();
             if (blowup)
             {

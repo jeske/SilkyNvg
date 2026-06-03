@@ -1,12 +1,12 @@
-﻿namespace SilkyNvg.Text
+namespace SilkyNvg.Text
 {
     public struct GlyphPosition
     {
 
         /// <summary>
-        /// Position of, and the rest of, the glyph in the input string.
+        /// Index of the glyph in the source string.
         /// </summary>
-        public string Str { get; }
+        public int StrIndex { get; }
 
         /// <summary>
         /// The X-coordinate of the logical glyph position.
@@ -23,9 +23,9 @@
         /// </summary>
         public float MaxX { get; }
 
-        internal GlyphPosition(string str, float x, float minX, float maxX)
+        internal GlyphPosition(int strIndex, float x, float minX, float maxX)
         {
-            Str = str;
+            StrIndex = strIndex;
             X = x;
             MinX = minX;
             MaxX = maxX;

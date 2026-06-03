@@ -1,25 +1,25 @@
-﻿namespace FontStash.NET
+namespace FontStash.NET
 {
-	internal static class Utf8
+	internal static class UtfDecoder
 	{
 
 		internal const int UTF8_ACCEPT = 0;
 		internal const int UTF8_REJECT = 12;
 
 		/// <summary>
-		/// Convert a C# char (UTF-16 code unit) to a Unicode codepoint.
+		/// Decode a UTF-16 code unit sequence into Unicode codepoints.
 		///
 		/// The original C FontStash operates on UTF-8 byte arrays and uses a DFA state machine
 		/// to reassemble multi-byte sequences. In C#, strings are UTF-16 — each str[i] is
 		/// already a Unicode code unit. The UTF-8 DFA is replaced with surrogate pair handling.
 		///
-		/// Callers iterate str[i] and check: if DecUtf8() != UTF8_ACCEPT, continue (skip).
+		/// Callers iterate str[i] and check: if DecodeCodepoint() != UTF8_ACCEPT, continue (skip).
 		///
 		/// BMP characters (U+0000-U+FFFF): single char → immediate ACCEPT with codepoint.
 		/// Surrogate pairs (U+10000+, e.g. emoji): high surrogate → store + non-ACCEPT (skip),
 		///   low surrogate → combine into full codepoint + ACCEPT.
 		/// </summary>
-		public static uint DecUtf8(ref uint state, ref uint codep, uint charValue)
+		public static uint DecodeCodepoint(ref uint state, ref uint codep, uint charValue)
 		{
 			// High surrogate (first half of a surrogate pair for U+10000+)
 			if (charValue >= 0xD800 && charValue <= 0xDBFF) {
@@ -40,6 +40,13 @@
 			state = UTF8_ACCEPT;
 			return state;
 		}
+
+		/// <summary>
+		/// Legacy name alias for backwards compatibility within the codebase.
+		/// </summary>
+		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+		public static uint DecUtf8(ref uint state, ref uint codep, uint charValue)
+			=> DecodeCodepoint(ref state, ref codep, charValue);
 
 	}
 }

@@ -420,7 +420,7 @@ namespace FontStash.NET
                 if (end != null && string.Compare(str, i, end, 0, end.Length) == 0)
                     break;
 
-                if (Utf8.DecUtf8(ref utf8state, ref codepoint, str[i]) != 0)
+                if (UtfDecoder.DecUtf8(ref utf8state, ref codepoint, str[i]) != 0)
                     continue;
 
                 glyph = GetGlyph(font, codepoint, isize, iblur, FonsGlyphBitmap.Requiered);
@@ -482,7 +482,7 @@ namespace FontStash.NET
                 if (end != null && string.Compare(str, i, end, 0, end.Length) == 0)
                     break;
 
-                if (Utf8.DecUtf8(ref utf8state, ref codepoint, str[i]) != 0)
+                if (UtfDecoder.DecUtf8(ref utf8state, ref codepoint, str[i]) != 0)
                     continue;
 
                 glyph = GetGlyph(font, codepoint, isize, iblur, FonsGlyphBitmap.Optional);
@@ -644,7 +644,7 @@ namespace FontStash.NET
                 if (iter.end != null && string.Compare(str, i, iter.end, 0, iter.end.Length) == 0)
                     break;
 
-                if (Utf8.DecUtf8(ref iter.utf8state, ref iter.codepoint, str[i]) != 0)
+                if (UtfDecoder.DecUtf8(ref iter.utf8state, ref iter.codepoint, str[i]) != 0)
                     continue;
 
                 iter.x = iter.nextx;

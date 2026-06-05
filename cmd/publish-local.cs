@@ -1,4 +1,4 @@
-#!/usr/bin/env dotnet run
+#!/usr/bin/env -S dotnet run
 // publish-local.cs — Cross-platform build+pack+deploy to local NuGet feed
 //
 // Versioning is timestamp-based (v2) — every build gets a unique version
@@ -13,6 +13,54 @@
 //   dotnet run cmd/publish-local.cs --dry-run    # show what would happen, don't build
 
 using System.Diagnostics;
+
+// ── Disable MSBuild node reuse to prevent zombie worker nodes ────────────
+// MSBuild nodes with --nodeReuse:true stay alive between builds to "speed up"
+// subsequent builds. On Linux, if the parent dies (Ctrl+C), these nodes become
+// immortal zombies that hold locks and corrupt future restore/build operations.
+Environment.SetEnvironmentVariable("MSBUILDDISABLENODEREUSE", "1");
+
+// ── Ctrl+C handling — kill child processes to prevent zombies ────────────
+// .NET's Process.Start on Linux uses posix_spawn, which does NOT place the
+// child in the parent's process group. Ctrl+C (SIGINT) only reaches the
+// foreground pgroup, leaving children alive as zombies. We track the active
+// child and kill its entire process tree on cancellation.
+Process? _activeChild = null;
+var _cts = new CancellationTokenSource();
+
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true; // prevent immediate exit so we can clean up
+    _cts.Cancel();
+    var proc = _activeChild;
+    if (proc is { HasExited: false })
+    {
+        WriteColor($"\n[Ctrl+C] Killing child process tree (PID {proc.Id})...", ConsoleColor.Yellow);
+        try
+        {
+            // Kill the entire process tree (-pid sends to process group if we can,
+            // otherwise kill the process directly and MSBuild nodes via build-server)
+            proc.Kill(entireProcessTree: true);
+        }
+        catch { /* best effort */ }
+    }
+    // Also shut down any MSBuild nodes that may have been spawned with node reuse
+    try
+    {
+        using var shutdown = Process.Start(new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = "build-server shutdown",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        });
+        shutdown?.WaitForExit(5000);
+    }
+    catch { /* best effort */ }
+
+    Environment.Exit(130); // Standard Ctrl+C exit code
+};
 
 // ── Parse arguments ─────────────────────────────────────────────────────
 bool dryRun = args.Any(a => a is "--dry-run" or "-n");
@@ -92,11 +140,13 @@ string[] packableProjects =
 
 foreach (string projectPath in packableProjects)
 {
+    if (_cts.IsCancellationRequested) break;
+
     string projectName = Path.GetFileNameWithoutExtension(projectPath);
     WriteColor($"  Packing {projectName}...", ConsoleColor.DarkGray);
 
     string versionArgs = string.Join(" ", versionProps);
-    int exitCode = RunProcess("dotnet", $"pack \"{projectPath}\" -c Release {versionArgs}");
+    int exitCode = RunProcess("dotnet", $"pack \"{projectPath}\" -c Release /nodeReuse:false {versionArgs}");
 
     if (exitCode != 0)
     {
@@ -161,7 +211,7 @@ static void WriteColor(string message, ConsoleColor color)
     Console.ForegroundColor = prev;
 }
 
-static int RunProcess(string fileName, string arguments)
+int RunProcess(string fileName, string arguments)
 {
     var psi = new ProcessStartInfo
     {
@@ -171,6 +221,14 @@ static int RunProcess(string fileName, string arguments)
     };
 
     using var process = Process.Start(psi);
-    process!.WaitForExit();
-    return process.ExitCode;
+    _activeChild = process;
+    try
+    {
+        process!.WaitForExit();
+    }
+    finally
+    {
+        _activeChild = null;
+    }
+    return _cts.IsCancellationRequested ? -1 : process!.ExitCode;
 }

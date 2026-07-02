@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Veldrid;
@@ -7,6 +7,9 @@ namespace SilkyNvg.Rendering.Veldrid
 {
     public sealed partial class VeldridRenderer
     {
+        /// <summary>
+        /// Uploads batched vertex data and executes all queued draw calls.
+        /// </summary>
         public void Flush()
         {
             if (_activeRenderCommandList == null)
@@ -32,7 +35,6 @@ namespace SilkyNvg.Rendering.Veldrid
             var commandList = _activeRenderCommandList;
 
             // Resolve the correct pipeline set for the current framebuffer's OutputDescription.
-            // This ensures NVG pipelines match whatever render target the caller set up.
             var currentFramebuffer = commandList.CurrentFramebuffer;
             if (currentFramebuffer == null)
             {
@@ -44,19 +46,12 @@ namespace SilkyNvg.Rendering.Veldrid
 
             // Update view size uniform via commandList (per-command-list sequencing).
             // CRITICAL: Must use commandList.UpdateBuffer, NOT _graphicsDevice.UpdateBuffer!
-            // _graphicsDevice.UpdateBuffer is immediate/global â€” the last caller wins for ALL pending
-            // command lists. In multi-window scenarios, a second window's flush would overwrite the
-            // uniform before the first window's command list executes on the GPU.
-            // commandList.UpdateBuffer bakes the data into THIS command list's stream, ensuring each
-            // window's draws see their own correct viewSize regardless of execution timing.
             // viewSize.z = Y direction multiplier: +1.0 for OpenGL/D3D11 (Y-up), -1.0 for Vulkan (Y-down)
             float clipSpaceYMultiplier = _graphicsDevice.IsClipSpaceYInverted ? -1.0f : 1.0f;
             var viewSizeData = new Vector4(_viewportSize.Width, _viewportSize.Height, clipSpaceYMultiplier, 0);
             commandList.UpdateBuffer(_viewSizeUniformBuffer, 0, viewSizeData);
 
-            // Upload vertices via commandList (same rationale as viewSize above).
-            // GPU buffer is already sized correctly by EnsureVertexCapacity() during batching.
-            // Uses GCHandle pinning to get IntPtr for exact-size upload (zero-alloc).
+            // Upload vertices via commandList.
             var vertexPinHandle = GCHandle.Alloc(_vertexBatchArray, GCHandleType.Pinned);
             try {
                 uint vertexUploadBytes = (uint)(_vertexBatchCount * Marshal.SizeOf<ShaderLayouts.NvgVertex>());
@@ -65,33 +60,74 @@ namespace SilkyNvg.Rendering.Veldrid
                 vertexPinHandle.Free();
             }
 
-            // Set shared vertex buffer (same layout for both pipelines)
             commandList.SetVertexBuffer(0, _vertexBuffer);
 
-            // Use viewport dimensions from BeginFrame() â€” the caller is responsible for setting
-            // the correct framebuffer on the command list (via commandList.SetFramebuffer()) before
-            // calling BeginFrame/EndFrame. This matches the OpenGL backend pattern where the caller
-            // binds the correct GL context/framebuffer.
-            // NOTE: Do NOT use _graphicsDevice.SwapchainFramebuffer â€” that's always the main
-            // swapchain. For multi-window rendering, each window has its own framebuffer.
             uint framebufferPixelWidth = (uint)(_viewportSize.Width * _devicePixelRatio);
             uint framebufferPixelHeight = (uint)(_viewportSize.Height * _devicePixelRatio);
             commandList.SetViewport(0, new Viewport(0, 0, framebufferPixelWidth, framebufferPixelHeight, 0, 1));
-
-            // Default scissor to full framebuffer (scissor test is always enabled in pipelines)
             commandList.SetScissorRect(0, 0, 0, framebufferPixelWidth, framebufferPixelHeight);
 
-            // Execute draw calls, switching pipeline and scissor per call
+            // Execute draw calls
             DrawCallType lastPipelineType = (DrawCallType)255; // Force first switch
             int lastBoundTextureId = -1;
             bool lastScissorWasFullViewport = true;
+            bool flushClipActive = false; // Tracks clip state during flush for pipeline selection
+
             foreach (var drawCall in _drawCalls)
             {
-                // Switch pipeline based on draw call type
+                // === Clip path stencil operations ===
+                if (drawCall.Type == DrawCallType.ClipSet)
+                {
+                    // Ensure full viewport scissor for clip stencil operations
+                    if (!lastScissorWasFullViewport) {
+                        commandList.SetScissorRect(0, 0, 0, framebufferPixelWidth, framebufferPixelHeight);
+                        lastScissorWasFullViewport = true;
+                    }
+
+                    // Render the clip path winding into the stencil buffer's low bits.
+                    // Front faces increment, back faces decrement (nonzero winding rule).
+                    // Pixels inside the clip path end up with nonzero stencil values.
+                    // The clipped draw pipelines test (stencil != 0) to enforce clipping.
+                    commandList.SetPipeline(drawCall.ClipIsNested ? pipelines.StencilClipFillNested : pipelines.StencilClipFill);
+                    commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
+                    commandList.Draw(
+                        (uint)drawCall.StencilFillVertexCount, 1,
+                        (uint)drawCall.VertexOffset, 0);
+
+                    flushClipActive = true;
+                    lastPipelineType = (DrawCallType)255;
+                    lastBoundTextureId = -1;
+                    continue;
+                }
+
+                if (drawCall.Type == DrawCallType.ClipClear)
+                {
+                    // Clear the stencil buffer to remove the clip mask.
+                    // Uses StencilClipClear pipeline: Replace(0) with WriteMask 0x80.
+                    // Also need to clear the low bits (winding) — use a full-screen quad
+                    // drawn with the StencilFill pipeline's write mask would work, but
+                    // simpler to just clear via the existing ClearDepthStencil mechanism.
+                    // For now, draw a full-viewport quad with the clear pipeline.
+                    if (!lastScissorWasFullViewport) {
+                        commandList.SetScissorRect(0, 0, 0, framebufferPixelWidth, framebufferPixelHeight);
+                        lastScissorWasFullViewport = true;
+                    }
+                    commandList.SetPipeline(pipelines.StencilClipClear);
+                    commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
+                    commandList.Draw((uint)drawCall.VertexCount, 1, (uint)drawCall.VertexOffset, 0);
+
+                    flushClipActive = false;
+                    lastPipelineType = (DrawCallType)255;
+                    lastBoundTextureId = -1;
+                    continue;
+                }
+
+                // === Regular draw call pipeline selection ===
+                // When clip is active, use clipped pipeline variants that test stencil != 0.
                 switch (drawCall.Type) {
                     case DrawCallType.SolidFill:
-                        if (lastPipelineType != DrawCallType.SolidFill) {
-                            commandList.SetPipeline(pipelines.SolidFill);
+                        if (lastPipelineType != DrawCallType.SolidFill || flushClipActive) {
+                            commandList.SetPipeline(flushClipActive ? pipelines.SolidFillClipped : pipelines.SolidFill);
                             commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                             lastPipelineType = DrawCallType.SolidFill;
                             lastBoundTextureId = -1;
@@ -99,10 +135,10 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
 
                     case DrawCallType.Textured:
-                        if (lastPipelineType != DrawCallType.Textured || drawCall.TextureId != lastBoundTextureId) {
+                        if (lastPipelineType != DrawCallType.Textured || drawCall.TextureId != lastBoundTextureId || flushClipActive) {
                             var texturedResourceSet = _textureRegistry.GetOrCreateTexturedResourceSet(drawCall.TextureId);
-                            if (lastPipelineType != DrawCallType.Textured) {
-                                commandList.SetPipeline(pipelines.Textured);
+                            if (lastPipelineType != DrawCallType.Textured || flushClipActive) {
+                                commandList.SetPipeline(flushClipActive ? pipelines.TexturedClipped : pipelines.Textured);
                                 lastPipelineType = DrawCallType.Textured;
                             }
                             commandList.SetGraphicsResourceSet(0, texturedResourceSet);
@@ -111,10 +147,9 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
 
                     case DrawCallType.Gradient:
-                        // Update paint uniform buffer via command list for proper per-draw-call sequencing
                         commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
-                        if (lastPipelineType != DrawCallType.Gradient) {
-                            commandList.SetPipeline(pipelines.Gradient);
+                        if (lastPipelineType != DrawCallType.Gradient || flushClipActive) {
+                            commandList.SetPipeline(flushClipActive ? pipelines.GradientClipped : pipelines.Gradient);
                             lastPipelineType = DrawCallType.Gradient;
                         }
                         commandList.SetGraphicsResourceSet(0, _gradientResourceSet);
@@ -122,13 +157,11 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
 
                     case DrawCallType.ImagePattern:
-                        // Update paint uniform buffer via command list for proper per-draw-call sequencing
                         commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);
-                        if (lastPipelineType != DrawCallType.ImagePattern) {
-                            commandList.SetPipeline(pipelines.ImagePattern);
+                        if (lastPipelineType != DrawCallType.ImagePattern || flushClipActive) {
+                            commandList.SetPipeline(flushClipActive ? pipelines.ImagePatternClipped : pipelines.ImagePattern);
                             lastPipelineType = DrawCallType.ImagePattern;
                         }
-                        // Get or create cached resource set for this texture
                         if (!_imagePatternResourceSetCache.TryGetValue(drawCall.TextureId, out var imagePatternResourceSet)) {
                             var patternTextureView = _textureRegistry.GetTextureView(drawCall.TextureId);
                             imagePatternResourceSet = _graphicsDevice.ResourceFactory.CreateResourceSet(new ResourceSetDescription(
@@ -147,7 +180,7 @@ namespace SilkyNvg.Rendering.Veldrid
                         break;
                 }
 
-                // Apply scissor rect BEFORE drawing (scale from NVG coordinates to framebuffer pixels)
+                // Apply scissor rect BEFORE drawing
                 if (drawCall.HasScissor) {
                     uint scaledScissorX = (uint)Math.Max(0, (int)(drawCall.ScissorX * _devicePixelRatio));
                     uint scaledScissorY = (uint)Math.Max(0, (int)(drawCall.ScissorY * _devicePixelRatio));
@@ -162,21 +195,17 @@ namespace SilkyNvg.Rendering.Veldrid
                     lastScissorWasFullViewport = true;
                 }
 
-                // Execute draw (NonConvexFill has its own multi-pass draw sequence)
+                // Execute draw
                 if (drawCall.Type == DrawCallType.NonConvexFill) {
                     // === TWO-PASS STENCIL-THEN-COVER for non-convex paths ===
-                    // Stencil is already cleared to 0 by ClearDepthStencil in GameLoop.
-
                     // Pass 1: Write winding count to stencil buffer (no color output)
-                    // Front faces increment, back faces decrement (non-zero winding rule)
                     commandList.SetPipeline(pipelines.StencilFill);
                     commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                     commandList.Draw(
                         (uint)drawCall.StencilFillVertexCount, 1,
                         (uint)drawCall.VertexOffset, 0);
 
-                    // Pass 2: Draw cover quad where stencil != 0, zeroing stencil as we go.
-                    // Use the correct cover pipeline based on the original paint type.
+                    // Pass 2: Draw cover quad where stencil low bits != 0, zeroing low bits.
                     switch (drawCall.NonConvexCoverPaintType) {
                         case DrawCallType.Gradient:
                             commandList.UpdateBuffer(_paintUniformBuffer, 0, drawCall.PaintParams);

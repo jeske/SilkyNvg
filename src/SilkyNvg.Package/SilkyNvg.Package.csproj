@@ -32,6 +32,7 @@
     <ProjectReference Include="..\components\SilkyNvg.Images\SilkyNvg.Images.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\components\SilkyNvg.Paths\SilkyNvg.Paths.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\components\SilkyNvg.Scissoring\SilkyNvg.Scissoring.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\components\SilkyNvg.Clipping\SilkyNvg.Clipping.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\components\SilkyNvg.Text\SilkyNvg.Text.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\components\SilkyNvg.Transforms\SilkyNvg.Transforms.csproj" PrivateAssets="all" />
   </ItemGroup>

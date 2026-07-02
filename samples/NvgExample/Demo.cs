@@ -1,6 +1,7 @@
 using SilkyNvg;
-using SilkyNvg.Graphics;
+using SilkyNvg.Clipping;
 using SilkyNvg.Images;
+using SilkyNvg.Graphics;
 using SilkyNvg.Paths;
 using SilkyNvg.Scissoring;
 using SilkyNvg.Text;
@@ -1034,10 +1035,80 @@ namespace NvgExample
             _nvg.Restore();
         }
 
+        private void DrawClipPathDemo(float x, float y, float radius, float t)
+        {
+            _nvg.Save();
+
+            // Draw a subtle circle outline to show the clip boundary
+            _nvg.BeginPath();
+            _nvg.Circle(x, y, radius);
+            _nvg.StrokeColour(_nvg.Rgba(255, 255, 255, 64));
+            _nvg.StrokeWidth(1.0f);
+            _nvg.Stroke();
+
+            // Set up circular clip path
+            _nvg.BeginPath();
+            _nvg.Circle(x, y, radius);
+            _nvg.ClipPath();
+
+            // Draw a background inside the clip (proves the clip region is filled)
+            _nvg.BeginPath();
+            _nvg.Rect(x - radius - 10, y - radius - 10, radius * 2 + 20, radius * 2 + 20);
+            _nvg.FillColour(_nvg.Rgba(32, 32, 64, 200));
+            _nvg.Fill();
+
+            // Animated text that scrolls vertically — clipped to the circle
+            float textY = y - radius + 20.0f;
+            float scrollOffset = (t * 30.0f) % (radius * 3.0f) - radius;
+
+            _nvg.FontSize(18.0f);
+            _nvg.FontFace("sans");
+            _nvg.FillColour(_nvg.Rgba(220, 220, 255, 255));
+            _nvg.TextAlign(Align.Centre | Align.Top);
+
+            string[] lines = {
+                "Clip paths work!",
+                "This text is clipped",
+                "to a circular region.",
+                "Only the nonzero",
+                "winding rule is used.",
+                "Rectangles can't do this!",
+                "Bezier clip shapes",
+                "are also supported.",
+                "Save/Restore preserves",
+                "the clip state.",
+            };
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                float ly = textY + scrollOffset + i * 22.0f;
+                _ = _nvg.Text(x, ly, lines[i]);
+            }
+
+            // Draw a colored circle inside the clip to show non-text content is also clipped
+            float blobX = x + MathF.Cos(t * 1.5f) * radius * 0.5f;
+            float blobY = y + MathF.Sin(t * 1.5f) * radius * 0.5f;
+            _nvg.BeginPath();
+            _nvg.Circle(blobX, blobY, 15.0f);
+            _nvg.FillColour(_nvg.Rgba(255, 100, 50, 180));
+            _nvg.Fill();
+
+            _nvg.Restore(); // This pops the clip path
+
+            // Label below the clip demo
+            _nvg.FontSize(13.0f);
+            _nvg.FontFace("sans");
+            _nvg.TextAlign(Align.Centre | Align.Top);
+            _nvg.FillColour(_nvg.Rgba(200, 200, 200, 128));
+            _ = _nvg.Text(x, y + radius + 5.0f, "Clip Path Demo");
+        }
+
         public void Render(float mx, float my, float width, float height, float t, bool blowup)
         {
             DrawEyes(width - 250.0f, 50.0f, 150.0f, 100.0f, mx, my, t);
             DrawPentagram(width - 175.0f, 220.0f, 60.0f);
+            DrawClipPathDemo(500.0f, 50.0f, 35.0f, t);
+
             DrawParagraph(width - 450.0f, 50.0f, 150.0f, mx, my);
             DrawGraph(0.0f, height / 2.0f, width, height / 2.0f, t);
             DrawColourwheel(width - 300.0f, height - 300.0f, 250.0f, 250.0f, t);

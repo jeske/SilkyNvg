@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="$(MSBuildThisFileDirectory)../../SilkyNvg.Build.props" />
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0-android</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\SilkyNvg.Core\SilkyNvg.Core.csproj" />
+    <ProjectReference Include="..\..\SilkyNvg.Common\SilkyNvg.Common.csproj" />
+    <ProjectReference Include="..\..\rendering\SilkyNvg.Rendering\SilkyNvg.Rendering.csproj" />
+    <ProjectReference Include="..\SilkyNvg.Paths\SilkyNvg.Paths.csproj" />
+    <ProjectReference Include="..\SilkyNvg.Graphics\SilkyNvg.Graphics.csproj" />
+    <ProjectReference Include="..\SilkyNvg.Tools\SilkyNvg.Tools.csproj" />
+  </ItemGroup>
+
+</Project>

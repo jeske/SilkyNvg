@@ -1,4 +1,4 @@
-﻿using SilkyNvg.Blending;
+using SilkyNvg.Blending;
 using SilkyNvg.Images;
 using System;
 using System.Collections.Generic;
@@ -28,6 +28,17 @@ namespace SilkyNvg.Rendering
         void Flush();
 
         void Fill(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, float fringe, RectangleF bounds, IReadOnlyList<Path> paths);
+
+        /// <summary>
+        /// Render the clip mask from the given paths. All subsequent Fill/Stroke/Triangles
+        /// draws will be clipped to this mask until ClearClip() or another SetClip() is called.
+        /// </summary>
+        void SetClip(IReadOnlyList<Path> paths, Scissor scissor, float fringe, RectangleF bounds, bool evenOdd);
+
+        /// <summary>
+        /// Clear the clip mask. All subsequent draws are unclipped until the next SetClip().
+        /// </summary>
+        void ClearClip();
 
         void Stroke(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, float fringe, float strokeWidth, IReadOnlyList<Path> paths);
 

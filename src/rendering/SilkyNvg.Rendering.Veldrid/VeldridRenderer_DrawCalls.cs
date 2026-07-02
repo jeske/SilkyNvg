@@ -79,7 +79,9 @@ namespace SilkyNvg.Rendering.Veldrid
             Textured,       // Font atlas text (R8_UNorm alpha, UV from vertices)
             Gradient,       // Linear/radial/box gradients (SDF in paint space)
             ImagePattern,   // Image fill (RGBA texture, UV from paintMat transform)
-            NonConvexFill   // Two-pass stencil fill for self-intersecting/concave paths
+            NonConvexFill,  // Two-pass stencil fill for self-intersecting/concave paths
+            ClipSet,        // 3-step stencil sequence: clear high bit → render winding → promote
+            ClipClear       // Clear high bit everywhere (reset clip mask)
         }
 
         // NvgVertex is now in Shaders/ShaderLayouts.cs (shared vertex format)
@@ -104,6 +106,10 @@ namespace SilkyNvg.Rendering.Veldrid
             public int StencilFillVertexCount;   // Fill triangles for stencil pass
             public int CoverQuadVertexOffset;    // Bounds quad for cover pass (always 6 vertices)
             public DrawCallType NonConvexCoverPaintType; // Original paint type for cover pass (SolidFill/Gradient/ImagePattern)
+
+            // ClipSet: whether this clip intersects with an existing clip (nested clips)
+            public bool ClipIsNested;
+            public bool ClipEvenOdd;
         }
 
         /// <summary>
@@ -387,6 +393,112 @@ namespace SilkyNvg.Rendering.Veldrid
                 drawCall.TextureId = paint.Image;
                 _drawCalls.Add(drawCall);
             }
+        }
+
+        // === Clip Path Support ===
+
+        // Renderer-internal clip state (tracks whether SetClip/ClearClip has been called)
+        private bool _clipActive;
+
+        public void SetClip(IReadOnlyList<Path> paths, Scissor scissor, float fringe, RectangleF bounds, bool evenOdd)
+        {
+            var dummyColor = Colour.White; // Color doesn't matter for stencil-only passes
+            int vertexOffset = _vertexBatchCount;
+
+            // Part 1: Stencil fill triangles (winding count into low 7 bits)
+            // Same triangle-fan-to-triangle-list conversion as FillNonConvex
+            int stencilFillStartOffset = _vertexBatchCount;
+            foreach (var path in paths) {
+                if (path.Fill.Count >= 3) {
+                    var firstVertex = path.Fill[0];
+                    for (int i = 1; i < path.Fill.Count - 1; i++) {
+                        AddVertex(new ShaderLayouts.NvgVertex(firstVertex, dummyColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(path.Fill[i], dummyColor));
+                        AddVertex(new ShaderLayouts.NvgVertex(path.Fill[i + 1], dummyColor));
+                    }
+                }
+            }
+            int stencilFillVertexCount = _vertexBatchCount - stencilFillStartOffset;
+
+            // Part 2: Full-screen quad for clear and promote passes
+            // We use the clip path bounds for the promote pass (smaller = faster)
+            // and the viewport bounds will be used for the clear pass in Flush()
+            int coverQuadVertexOffset = _vertexBatchCount;
+            var coverVertex = new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(bounds.Right, bounds.Top, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+
+            coverVertex = new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(bounds.Left, bounds.Bottom, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+
+            int totalVertexCount = _vertexBatchCount - vertexOffset;
+
+            if (totalVertexCount > 0) {
+                var drawCall = new DrawCall
+                {
+                    VertexOffset = vertexOffset,
+                    VertexCount = totalVertexCount,
+                    Type = DrawCallType.ClipSet,
+                    StencilFillVertexCount = stencilFillVertexCount,
+                    CoverQuadVertexOffset = coverQuadVertexOffset,
+                    ClipIsNested = _clipActive,
+                    ClipEvenOdd = evenOdd,
+                    BlendState = VeldridCompat.SingleAlphaBlend
+                };
+
+                drawCall.HasScissor = TryExtractScissorRect(scissor,
+                    out drawCall.ScissorX, out drawCall.ScissorY,
+                    out drawCall.ScissorWidth, out drawCall.ScissorHeight);
+
+                _drawCalls.Add(drawCall);
+            }
+
+            _clipActive = true;
+        }
+
+        public void ClearClip()
+        {
+            if (!_clipActive)
+                return;
+
+            // We need a full-viewport quad to clear bit 7 everywhere.
+            // The viewport size is known at Flush() time, so we emit a viewport-filling quad
+            // using very large coordinates. The actual clipping happens via the scissor rect
+            // which is set to full viewport in Flush().
+            var dummyColor = Colour.White;
+            int vertexOffset = _vertexBatchCount;
+
+            // Large quad that covers any reasonable viewport
+            var coverVertex = new Vertex(-10000, -10000, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(10000, -10000, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(10000, 10000, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+
+            coverVertex = new Vertex(-10000, -10000, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(10000, 10000, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+            coverVertex = new Vertex(-10000, 10000, 0.5f, 1.0f);
+            AddVertex(new ShaderLayouts.NvgVertex(coverVertex, dummyColor));
+
+            _drawCalls.Add(new DrawCall
+            {
+                VertexOffset = vertexOffset,
+                VertexCount = 6,
+                Type = DrawCallType.ClipClear,
+                BlendState = VeldridCompat.SingleAlphaBlend
+            });
+
+            _clipActive = false;
         }
     }
 }

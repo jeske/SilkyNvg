@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Veldrid;
@@ -13,6 +13,10 @@ namespace SilkyNvg.Rendering.Veldrid
     internal sealed class PipelineSet : IDisposable
     {
         public Pipeline SolidFill;
+        public Pipeline SolidFillClipped;
+        public Pipeline TexturedClipped;
+        public Pipeline GradientClipped;
+        public Pipeline ImagePatternClipped;
         public Pipeline Textured;
         public Pipeline Gradient;
         public Pipeline ImagePattern;
@@ -20,10 +24,20 @@ namespace SilkyNvg.Rendering.Veldrid
         public Pipeline StencilCoverSolid;
         public Pipeline StencilCoverGradient;
         public Pipeline StencilCoverImagePattern;
+        // Clip path pipelines
+        public Pipeline StencilClipFill;          // Writes winding to low bits (0x7F mask)
+        public Pipeline StencilClipFillNested;     // Same but gated by existing clip bit
+        public Pipeline StencilClipPromote;        // Reads low bits, writes high bit
+        public Pipeline StencilClipPromoteEvenOdd; // Even-odd variant of promote
+        public Pipeline StencilClipClear;          // Clears high bit everywhere
 
         public void Dispose()
         {
             SolidFill?.Dispose();
+            SolidFillClipped?.Dispose();
+            TexturedClipped?.Dispose();
+            GradientClipped?.Dispose();
+            ImagePatternClipped?.Dispose();
             Textured?.Dispose();
             Gradient?.Dispose();
             ImagePattern?.Dispose();
@@ -31,6 +45,11 @@ namespace SilkyNvg.Rendering.Veldrid
             StencilCoverSolid?.Dispose();
             StencilCoverGradient?.Dispose();
             StencilCoverImagePattern?.Dispose();
+            StencilClipFill?.Dispose();
+            StencilClipFillNested?.Dispose();
+            StencilClipPromote?.Dispose();
+            StencilClipPromoteEvenOdd?.Dispose();
+            StencilClipClear?.Dispose();
         }
     }
 
@@ -53,7 +72,8 @@ namespace SilkyNvg.Rendering.Veldrid
         };
 
         /// <summary>
-        /// Stencil cover depth-stencil state: draw where stencil != 0, zero stencil on pass.
+        /// Stencil cover depth-stencil state: draw where low 7 bits != 0, zero low bits on pass.
+        /// Preserves the clip bit (0x80) by using 0x7F read/write masks.
         /// </summary>
         private static readonly DepthStencilStateDescription StencilCoverDepthStencilState = new DepthStencilStateDescription
         {
@@ -66,8 +86,8 @@ namespace SilkyNvg.Rendering.Veldrid
             StencilBack = new StencilBehaviorDescription(
                 StencilOperation.Zero, StencilOperation.Zero,
                 StencilOperation.Zero, ComparisonKind.NotEqual),
-            StencilReadMask = 0xFF,
-            StencilWriteMask = 0xFF,
+            StencilReadMask = 0x7F,
+            StencilWriteMask = 0x7F,
             StencilReference = 0
         };
 
@@ -224,8 +244,9 @@ namespace SilkyNvg.Rendering.Veldrid
                     StencilBack = new StencilBehaviorDescription(
                         StencilOperation.DecrementAndWrap, StencilOperation.DecrementAndWrap,
                         StencilOperation.DecrementAndWrap, ComparisonKind.Always),
-                    StencilReadMask = 0xFF,
-                    StencilWriteMask = 0xFF,
+                    // Write mask 0x7F: only touch low 7 bits, preserving clip bit (0x80)
+                    StencilReadMask = 0x7F,
+                    StencilWriteMask = 0x7F,
                     StencilReference = 0
                 },
                 RasterizerState = new RasterizerStateDescription(
@@ -271,6 +292,192 @@ namespace SilkyNvg.Rendering.Veldrid
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _imagePatternResourceLayout },
                 ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _imagePatternShaders),
+                Outputs = outputDescription
+            });
+
+            // === Clipped draw pipeline variants ===
+            // Test: (stencil & 0xFF) != 0 — passes where stencil is nonzero.
+            // Uses Keep ops to preserve the stencil value for subsequent clipped draws.
+            var clippedDepthStencil = new DepthStencilStateDescription
+            {
+                DepthTestEnabled = false,
+                DepthWriteEnabled = false,
+                StencilTestEnabled = true,
+                StencilFront = new StencilBehaviorDescription(
+                    StencilOperation.Keep, StencilOperation.Keep,
+                    StencilOperation.Keep, ComparisonKind.NotEqual),
+                StencilBack = new StencilBehaviorDescription(
+                    StencilOperation.Keep, StencilOperation.Keep,
+                    StencilOperation.Keep, ComparisonKind.NotEqual),
+                StencilReadMask = 0xFF,
+                StencilWriteMask = 0x00,
+                StencilReference = 0
+            };
+
+            pipelineSet.SolidFillClipped = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = VeldridCompat.SingleAlphaBlend,
+                DepthStencilState = clippedDepthStencil,
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
+            });
+
+            pipelineSet.TexturedClipped = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = VeldridCompat.SingleAlphaBlend,
+                DepthStencilState = clippedDepthStencil,
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _texturedResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _texturedShaders),
+                Outputs = outputDescription
+            });
+
+            pipelineSet.GradientClipped = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = VeldridCompat.SingleAlphaBlend,
+                DepthStencilState = clippedDepthStencil,
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _gradientResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _gradientShaders),
+                Outputs = outputDescription
+            });
+
+            pipelineSet.ImagePatternClipped = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = VeldridCompat.SingleAlphaBlend,
+                DepthStencilState = clippedDepthStencil,
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _imagePatternResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _imagePatternShaders),
+                Outputs = outputDescription
+            });
+
+            // === Clip path stencil pipelines ===
+            var noColorWrite = new BlendStateDescription
+            {
+                AttachmentStates = new[] {
+                    new BlendAttachmentDescription { BlendEnabled = false, ColorWriteMask = ColorWriteMask.None }
+                }
+            };
+
+            // StencilClipFill: Write winding to low 7 bits (first clip, no gate)
+            pipelineSet.StencilClipFill = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = noColorWrite,
+                DepthStencilState = new DepthStencilStateDescription
+                {
+                    DepthTestEnabled = false, DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.IncrementAndWrap, StencilOperation.IncrementAndWrap,
+                        StencilOperation.IncrementAndWrap, ComparisonKind.Always),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.DecrementAndWrap, StencilOperation.DecrementAndWrap,
+                        StencilOperation.DecrementAndWrap, ComparisonKind.Always),
+                    StencilReadMask = 0x7F, StencilWriteMask = 0x7F, StencilReference = 0
+                },
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
+            });
+
+            // StencilClipFillNested: Write winding to low 7 bits, only where bit 7 is set (nested clip)
+            pipelineSet.StencilClipFillNested = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = noColorWrite,
+                DepthStencilState = new DepthStencilStateDescription
+                {
+                    DepthTestEnabled = false, DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.Keep, StencilOperation.IncrementAndWrap,
+                        StencilOperation.IncrementAndWrap, ComparisonKind.Equal),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.Keep, StencilOperation.DecrementAndWrap,
+                        StencilOperation.DecrementAndWrap, ComparisonKind.Equal),
+                    StencilReadMask = 0x80, StencilWriteMask = 0x7F, StencilReference = 0x80
+                },
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
+            });
+
+            // StencilClipPromote: Where low bits != 0, write 0x80 (set clip bit, clear winding)
+            pipelineSet.StencilClipPromote = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = noColorWrite,
+                DepthStencilState = new DepthStencilStateDescription
+                {
+                    DepthTestEnabled = false, DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.Zero, StencilOperation.Zero,
+                        StencilOperation.Replace, ComparisonKind.NotEqual),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.Zero, StencilOperation.Zero,
+                        StencilOperation.Replace, ComparisonKind.NotEqual),
+                    StencilReadMask = 0x7F, StencilWriteMask = 0xFF, StencilReference = 0x80
+                },
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
+            });
+
+            // StencilClipPromoteEvenOdd: Where bit 0 != 0, write 0x80 (even-odd rule)
+            pipelineSet.StencilClipPromoteEvenOdd = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = noColorWrite,
+                DepthStencilState = new DepthStencilStateDescription
+                {
+                    DepthTestEnabled = false, DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.Zero, StencilOperation.Zero,
+                        StencilOperation.Replace, ComparisonKind.NotEqual),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.Zero, StencilOperation.Zero,
+                        StencilOperation.Replace, ComparisonKind.NotEqual),
+                    StencilReadMask = 0x01, StencilWriteMask = 0xFF, StencilReference = 0x80
+                },
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
+            });
+
+            // StencilClipClear: Clear bit 7 everywhere
+            pipelineSet.StencilClipClear = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = noColorWrite,
+                DepthStencilState = new DepthStencilStateDescription
+                {
+                    DepthTestEnabled = false, DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.Replace, StencilOperation.Replace,
+                        StencilOperation.Replace, ComparisonKind.Always),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.Replace, StencilOperation.Replace,
+                        StencilOperation.Replace, ComparisonKind.Always),
+                    StencilReadMask = 0xFF, StencilWriteMask = 0xFF, StencilReference = 0
+                },
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
                 Outputs = outputDescription
             });
 

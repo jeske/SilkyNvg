@@ -1,9 +1,11 @@
-﻿using SilkyNvg.Blending;
+using SilkyNvg.Blending;
 using SilkyNvg.Text;
 using SilkyNvg.Graphics;
 using SilkyNvg.Rendering;
 using System.Numerics;
 using System.Drawing;
+
+#nullable enable
 
 namespace SilkyNvg.Core.States
 {
@@ -29,6 +31,17 @@ namespace SilkyNvg.Core.States
         public float Alpha { get; set; }
 
         public Matrix3x2 Transform { get; set; }
+
+        // --- Clip Path State ---
+
+        /// <summary>Whether a clip path is currently in effect.</summary>
+        public bool ClipActive { get; set; }
+
+        /// <summary>
+        /// Snapshot of the current clip path geometry, sufficient to re-render the clip mask on Restore().
+        /// Null if no clip is active. Immutable — safe to share across MemberwiseClone().
+        /// </summary>
+        public ClipPathSnapshot? ClipSnapshot { get; set; }
 
         public Scissor Scissor { get; set; }
 
@@ -58,6 +71,9 @@ namespace SilkyNvg.Core.States
             Transform = Matrix3x2.Identity;
 
             Scissor = new Scissor(new SizeF(-1.0f, -1.0f));
+
+            ClipActive = false;
+            ClipSnapshot = null;
 
             FontSize = 16.0f;
             LetterSpacing = 0.0f;

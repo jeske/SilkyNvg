@@ -1,4 +1,4 @@
-﻿using Silk.NET.OpenGL;
+using Silk.NET.OpenGL;
 using SilkyNvg.Blending;
 using SilkyNvg.Images;
 using SilkyNvg.Rendering.OpenGL.Blending;
@@ -309,6 +309,18 @@ namespace SilkyNvg.Rendering.OpenGL
             int uniformOffset = Shader.UniformManager.AddUniform(uniforms);
             Call call = new TrianglesCall(paint.Image, new Blend(compositeOperation, this), offset, (uint)vertices.Count, uniformOffset, this);
             _callQueue.Add(call);
+        }
+
+        // --- Clip Path (not implemented for OpenGL backend) ---
+
+        public void SetClip(IReadOnlyList<Rendering.Path> paths, Scissor scissor, float fringe, System.Drawing.RectangleF bounds, bool evenOdd)
+        {
+            // No-op: clip paths are only implemented in the Veldrid renderer.
+        }
+
+        public void ClearClip()
+        {
+            // No-op: clip paths are only implemented in the Veldrid renderer.
         }
 
         public void Dispose()

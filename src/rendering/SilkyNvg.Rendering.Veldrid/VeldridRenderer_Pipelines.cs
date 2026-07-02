@@ -30,6 +30,7 @@ namespace SilkyNvg.Rendering.Veldrid
         public Pipeline StencilClipPromote;        // Reads low bits, writes high bit
         public Pipeline StencilClipPromoteEvenOdd; // Even-odd variant of promote
         public Pipeline StencilClipClear;          // Clears high bit everywhere
+        public Pipeline StencilClipCleanWinding;   // Zeros low bits, preserving clip bit
 
         public void Dispose()
         {
@@ -50,6 +51,7 @@ namespace SilkyNvg.Rendering.Veldrid
             StencilClipPromote?.Dispose();
             StencilClipPromoteEvenOdd?.Dispose();
             StencilClipClear?.Dispose();
+            StencilClipCleanWinding?.Dispose();
         }
     }
 
@@ -296,8 +298,7 @@ namespace SilkyNvg.Rendering.Veldrid
             });
 
             // === Clipped draw pipeline variants ===
-            // Test: (stencil & 0xFF) != 0 — passes where stencil is nonzero.
-            // Uses Keep ops to preserve the stencil value for subsequent clipped draws.
+            // Test: (stencil & 0x80\) != 0 — passes where clip bit \(bit 7\) is set.\n            // After the two-pass promote sets bit 7 inside the clip, this test\n            // passes inside and fails outside. Keep ops preserve stencil.
             var clippedDepthStencil = new DepthStencilStateDescription
             {
                 DepthTestEnabled = false,
@@ -412,7 +413,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 Outputs = outputDescription
             });
 
-            // StencilClipPromote: Where low bits != 0, write 0x80 (set clip bit, clear winding)
+            // StencilClipPromote: Where low bits != 0, Invert bit 7 (sets clip bit via bitwise flip)
             pipelineSet.StencilClipPromote = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = noColorWrite,
@@ -421,12 +422,12 @@ namespace SilkyNvg.Rendering.Veldrid
                     DepthTestEnabled = false, DepthWriteEnabled = false,
                     StencilTestEnabled = true,
                     StencilFront = new StencilBehaviorDescription(
-                        StencilOperation.Zero, StencilOperation.Zero,
-                        StencilOperation.Replace, ComparisonKind.NotEqual),
+                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.Invert, ComparisonKind.NotEqual),
                     StencilBack = new StencilBehaviorDescription(
-                        StencilOperation.Zero, StencilOperation.Zero,
-                        StencilOperation.Replace, ComparisonKind.NotEqual),
-                    StencilReadMask = 0x7F, StencilWriteMask = 0xFF, StencilReference = 0x80
+                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.Invert, ComparisonKind.NotEqual),
+                    StencilReadMask = 0x7F, StencilWriteMask = 0x80, StencilReference = 0
                 },
                 RasterizerState = stencilCoverRasterizer,
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
@@ -435,7 +436,7 @@ namespace SilkyNvg.Rendering.Veldrid
                 Outputs = outputDescription
             });
 
-            // StencilClipPromoteEvenOdd: Where bit 0 != 0, write 0x80 (even-odd rule)
+            // StencilClipPromoteEvenOdd: Where bit 0 != 0, Invert bit 7 (even-odd rule)
             pipelineSet.StencilClipPromoteEvenOdd = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
                 BlendState = noColorWrite,
@@ -444,12 +445,12 @@ namespace SilkyNvg.Rendering.Veldrid
                     DepthTestEnabled = false, DepthWriteEnabled = false,
                     StencilTestEnabled = true,
                     StencilFront = new StencilBehaviorDescription(
-                        StencilOperation.Zero, StencilOperation.Zero,
-                        StencilOperation.Replace, ComparisonKind.NotEqual),
+                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.Invert, ComparisonKind.NotEqual),
                     StencilBack = new StencilBehaviorDescription(
-                        StencilOperation.Zero, StencilOperation.Zero,
-                        StencilOperation.Replace, ComparisonKind.NotEqual),
-                    StencilReadMask = 0x01, StencilWriteMask = 0xFF, StencilReference = 0x80
+                        StencilOperation.Keep, StencilOperation.Keep,
+                        StencilOperation.Invert, ComparisonKind.NotEqual),
+                    StencilReadMask = 0x01, StencilWriteMask = 0x80, StencilReference = 0
                 },
                 RasterizerState = stencilCoverRasterizer,
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
@@ -472,7 +473,31 @@ namespace SilkyNvg.Rendering.Veldrid
                     StencilBack = new StencilBehaviorDescription(
                         StencilOperation.Replace, StencilOperation.Replace,
                         StencilOperation.Replace, ComparisonKind.Always),
-                    StencilReadMask = 0xFF, StencilWriteMask = 0xFF, StencilReference = 0
+                    StencilReadMask = 0xFF, StencilWriteMask = 0x80, StencilReference = 0
+                },
+                RasterizerState = stencilCoverRasterizer,
+                PrimitiveTopology = PrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _viewSizeOnlyResourceLayout },
+                ShaderSet = new ShaderSetDescription(new[] { sharedVertexLayout }, _vertexColorShaders),
+                Outputs = outputDescription
+            });
+
+            // StencilClipCleanWinding: Zero low 7 bits everywhere, preserving clip bit (bit 7).
+            // Pass 2 of promote: after Invert sets bit 7, this cleans up the winding values.
+            pipelineSet.StencilClipCleanWinding = factory.CreateGraphicsPipeline(new GraphicsPipelineDescription
+            {
+                BlendState = noColorWrite,
+                DepthStencilState = new DepthStencilStateDescription
+                {
+                    DepthTestEnabled = false, DepthWriteEnabled = false,
+                    StencilTestEnabled = true,
+                    StencilFront = new StencilBehaviorDescription(
+                        StencilOperation.Replace, StencilOperation.Replace,
+                        StencilOperation.Replace, ComparisonKind.Always),
+                    StencilBack = new StencilBehaviorDescription(
+                        StencilOperation.Replace, StencilOperation.Replace,
+                        StencilOperation.Replace, ComparisonKind.Always),
+                    StencilReadMask = 0xFF, StencilWriteMask = 0x7F, StencilReference = 0
                 },
                 RasterizerState = stencilCoverRasterizer,
                 PrimitiveTopology = PrimitiveTopology.TriangleList,

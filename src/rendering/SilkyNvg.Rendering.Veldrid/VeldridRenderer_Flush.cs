@@ -84,15 +84,25 @@ namespace SilkyNvg.Rendering.Veldrid
                         lastScissorWasFullViewport = true;
                     }
 
-                    // Render the clip path winding into the stencil buffer's low bits.
+                    // Step 1: Clear the clip bit (bit 7) on the bounds quad area
+                    commandList.SetPipeline(pipelines.StencilClipClear);
+                    commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
+                    commandList.Draw(6, 1, (uint)drawCall.CoverQuadVertexOffset, 0);
+
+                    // Step 1: Render the clip path winding into the low 7 bits.
                     // Front faces increment, back faces decrement (nonzero winding rule).
-                    // Pixels inside the clip path end up with nonzero stencil values.
-                    // The clipped draw pipelines test (stencil != 0) to enforce clipping.
                     commandList.SetPipeline(drawCall.ClipIsNested ? pipelines.StencilClipFillNested : pipelines.StencilClipFill);
                     commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
                     commandList.Draw(
                         (uint)drawCall.StencilFillVertexCount, 1,
                         (uint)drawCall.VertexOffset, 0);
+
+                    // Step 3: Promote — where low bits != 0, Invert bit 7 (0→1).
+                    // Inside circle: stencil 0x01 → test (0x01 & 0x7F) != 0 → TRUE → Invert bit 7 → 0x81
+                    // Outside circle: stencil 0x00 → test (0x00 & 0x7F) != 0 → FALSE → Keep → 0x00
+                    commandList.SetPipeline(drawCall.ClipEvenOdd ? pipelines.StencilClipPromoteEvenOdd : pipelines.StencilClipPromote);
+                    commandList.SetGraphicsResourceSet(0, _viewSizeOnlyResourceSet);
+                    commandList.Draw(6, 1, (uint)drawCall.CoverQuadVertexOffset, 0);
 
                     flushClipActive = true;
                     lastPipelineType = (DrawCallType)255;

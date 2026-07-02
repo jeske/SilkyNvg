@@ -323,6 +323,11 @@ namespace SilkyNvg.Rendering.OpenGL
             // No-op: clip paths are only implemented in the Veldrid renderer.
         }
 
+        public void SetClipFromSnapshot(Rendering.Vertex[] stencilVertices, System.Drawing.RectangleF bounds, bool evenOdd)
+        {
+            // No-op: clip paths are only implemented in the Veldrid renderer.
+        }
+
         public void Dispose()
         {
             Shader.Dispose();

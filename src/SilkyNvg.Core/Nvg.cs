@@ -219,15 +219,13 @@ namespace SilkyNvg
             {
                 if (postRestoreState.ClipActive && postRestoreState.ClipSnapshot != null)
                 {
-                    // Restored state has a clip — re-render it.
-                    // The renderer will rebuild the clip mask from the snapshot.
-                    // We need to re-flatten and re-expand the snapshot paths, but the snapshot
-                    // stores the original Path objects, so we pass them through SetClip.
-                    // For now, we use ResetClip + SetClip pattern.
-                    // The Veldrid renderer handles the full 3-step stencil rebuild internally.
+                    // Restored state has a clip — re-render it from the saved snapshot.
+                    // First clear any existing clip mask, then rebuild from snapshot.
                     renderer.ClearClip();
-                    // TODO: Re-render clip from snapshot. For now, the snapshot data will be
-                    // used when we implement snapshot-based clip re-rendering in the renderer.
+                    renderer.SetClipFromSnapshot(
+                        postRestoreState.ClipSnapshot.StencilVertices,
+                        postRestoreState.ClipSnapshot.Bounds,
+                        postRestoreState.ClipSnapshot.EvenOdd);
                 }
                 else
                 {

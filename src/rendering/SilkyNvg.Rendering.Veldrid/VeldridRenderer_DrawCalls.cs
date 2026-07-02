@@ -500,5 +500,53 @@ namespace SilkyNvg.Rendering.Veldrid
 
             _clipActive = false;
         }
+
+        public void SetClipFromSnapshot(Vertex[] stencilVertices, System.Drawing.RectangleF bounds, bool evenOdd)
+        {
+            if (stencilVertices == null || stencilVertices.Length < 3)
+                return;
+
+            var dummyColor = Colour.White;
+            int vertexOffset = _vertexBatchCount;
+
+            // Convert triangle-fan vertices to triangle-list (same as SetClip)
+            int stencilFillStartOffset = _vertexBatchCount;
+            var firstVertex = stencilVertices[0];
+            for (int i = 1; i < stencilVertices.Length - 1; i++)
+            {
+                AddVertex(new ShaderLayouts.NvgVertex(firstVertex, dummyColor));
+                AddVertex(new ShaderLayouts.NvgVertex(stencilVertices[i], dummyColor));
+                AddVertex(new ShaderLayouts.NvgVertex(stencilVertices[i + 1], dummyColor));
+            }
+            int stencilFillVertexCount = _vertexBatchCount - stencilFillStartOffset;
+
+            // Bounds quad for clear/promote passes
+            int coverQuadVertexOffset = _vertexBatchCount;
+            AddVertex(new ShaderLayouts.NvgVertex(new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f), dummyColor));
+            AddVertex(new ShaderLayouts.NvgVertex(new Vertex(bounds.Right, bounds.Top, 0.5f, 1.0f), dummyColor));
+            AddVertex(new ShaderLayouts.NvgVertex(new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f), dummyColor));
+            AddVertex(new ShaderLayouts.NvgVertex(new Vertex(bounds.Left, bounds.Top, 0.5f, 1.0f), dummyColor));
+            AddVertex(new ShaderLayouts.NvgVertex(new Vertex(bounds.Right, bounds.Bottom, 0.5f, 1.0f), dummyColor));
+            AddVertex(new ShaderLayouts.NvgVertex(new Vertex(bounds.Left, bounds.Bottom, 0.5f, 1.0f), dummyColor));
+
+            int totalVertexCount = _vertexBatchCount - vertexOffset;
+
+            if (totalVertexCount > 0) {
+                var drawCall = new DrawCall
+                {
+                    VertexOffset = vertexOffset,
+                    VertexCount = totalVertexCount,
+                    Type = DrawCallType.ClipSet,
+                    StencilFillVertexCount = stencilFillVertexCount,
+                    CoverQuadVertexOffset = coverQuadVertexOffset,
+                    ClipIsNested = _clipActive,
+                    ClipEvenOdd = evenOdd,
+                    BlendState = VeldridCompat.SingleAlphaBlend
+                };
+                _drawCalls.Add(drawCall);
+            }
+
+            _clipActive = true;
+        }
     }
 }

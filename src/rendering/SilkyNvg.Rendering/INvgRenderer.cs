@@ -40,6 +40,13 @@ namespace SilkyNvg.Rendering
         /// </summary>
         void ClearClip();
 
+        /// <summary>
+        /// Re-render a clip mask from a previously-saved snapshot of fill vertices.
+        /// Used by Restore() to rebuild the clip when popping back to a state that had a clip active.
+        /// The vertices are pre-tessellated triangle-fan points (same format as Path.Fill).
+        /// </summary>
+        void SetClipFromSnapshot(Vertex[] stencilVertices, RectangleF bounds, bool evenOdd);
+
         void Stroke(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, float fringe, float strokeWidth, IReadOnlyList<Path> paths);
 
         void Triangles(Paint paint, CompositeOperationState compositeOperation, Scissor scissor, ICollection<Vertex> vertices, float fringeWidth);

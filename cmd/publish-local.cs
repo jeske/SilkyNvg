@@ -80,7 +80,20 @@ if (!File.Exists(Path.Combine(projectRoot, "SilkyNvg.sln")))
 
 string packageOutputDir = Path.Combine(projectRoot, "bin", "Packages", "Release");
 
-// ── Require LOCAL_NUGET_REPO environment variable ───────────────────────
+// ── Require git submodule (SafeStbTrueTypeSharp) ────────────────────────────
+// The build depends on SafeStbTrueTypeSharp which lives in a git submodule.
+// After a fresh clone the submodule directory is empty until initialized.
+string submoduleSln = Path.Combine(projectRoot, "SafeStbTrueTypeSharp", "SafeStbTrueTypeSharp.sln");
+if (!File.Exists(submoduleSln))
+{
+    WriteColor("ERROR: Git submodule 'SafeStbTrueTypeSharp' is not initialized!", ConsoleColor.Red);
+    WriteColor("  The SafeStbTrueTypeSharp/ directory is empty or missing.", ConsoleColor.Yellow);
+    WriteColor("  Run the following from the repository root:", ConsoleColor.Yellow);
+    WriteColor("    git submodule init && git submodule update", ConsoleColor.Cyan);
+    Environment.Exit(1);
+}
+
+// ── Require LOCAL_NUGET_REPO environment variable ───────────────────────────
 string? localNuGetFeedPath = Environment.GetEnvironmentVariable("LOCAL_NUGET_REPO");
 if (string.IsNullOrEmpty(localNuGetFeedPath))
 {

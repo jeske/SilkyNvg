@@ -15,6 +15,12 @@
 <Project>
 
   <PropertyGroup>
+    <!-- Dependency versions — edit here, all projects pick them up -->
+    <ANVeldridVersion>[5.260703.135607,)</ANVeldridVersion>
+    <ANVeldridSpirvVersion>[5.260526.172230,)</ANVeldridSpirvVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <RepositoryRootDirectory>$(MSBuildThisFileDirectory)</RepositoryRootDirectory>
     <BinDir>$(RepositoryRootDirectory)bin</BinDir>
